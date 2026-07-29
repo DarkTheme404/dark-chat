@@ -130,6 +130,28 @@ def init_db():
             (default_id, "Первый чат")
         )
 
+    # Миграции: добавляем колонки если их нет
+    cursor.execute("PRAGMA table_info(queries)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if "session_id" not in cols:
+        cursor.execute("ALTER TABLE queries ADD COLUMN session_id TEXT DEFAULT ''")
+    if "response_length" not in cols:
+        cursor.execute("ALTER TABLE queries ADD COLUMN response_length INTEGER DEFAULT 0")
+    if "response_time_ms" not in cols:
+        cursor.execute("ALTER TABLE queries ADD COLUMN response_time_ms INTEGER DEFAULT 0")
+
+    cursor.execute("PRAGMA table_info(training_pairs)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if "model_used" not in cols:
+        cursor.execute("ALTER TABLE training_pairs ADD COLUMN model_used TEXT DEFAULT 'unknown'")
+    if "quality_score" not in cols:
+        cursor.execute("ALTER TABLE training_pairs ADD COLUMN quality_score REAL DEFAULT 0.5")
+
+    cursor.execute("PRAGMA table_info(training_metrics)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if "total_training_pairs" not in cols:
+        cursor.execute("ALTER TABLE training_metrics ADD COLUMN total_training_pairs INTEGER DEFAULT 0")
+
     conn.commit()
     conn.close()
 
