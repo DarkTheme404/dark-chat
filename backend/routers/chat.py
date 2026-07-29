@@ -240,16 +240,18 @@ async def chat(request: ChatRequest):
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
         is_new_session = True
-        conn = get_db()
-        cursor = conn.cursor()
-        # Временное название — потом обновим через AI
-        title = request.message[:30] + "..." if len(request.message) > 30 else request.message
-        cursor.execute(
-            "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
-            (session_id, title)
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            title = request.message[:30] + "..." if len(request.message) > 30 else request.message
+            cursor.execute(
+                "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
+                (session_id, title)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("Failed to create session: %s", e)
 
     intent = detect_intent(request.message)
     start_time = time.time()
@@ -266,7 +268,11 @@ async def chat(request: ChatRequest):
         # Генерация изображения
         img_prompt = extract_image_prompt(request.message)
         reply = f"Генерирую изображение: {img_prompt}..."
-        image_data = await generate_image(img_prompt)
+        try:
+            image_data = await generate_image(img_prompt)
+        except Exception as e:
+            logger.error("Image generation failed: %s", e)
+            image_data = ""
         if image_data:
             reply = f"Вот изображение по запросу: {img_prompt}"
             resp_type = "image"
@@ -288,7 +294,11 @@ async def chat(request: ChatRequest):
             },
             {"role": "user", "content": code_prompt},
         ]
-        raw_code, model_name = await call_ai(messages, FREE_CODE_MODELS, max_tokens=2048, temperature=0.3)
+        try:
+            raw_code, model_name = await call_ai(messages, FREE_CODE_MODELS, max_tokens=2048, temperature=0.3)
+        except Exception as e:
+            logger.error("Code generation failed: %s", e)
+            raw_code = ""
         if raw_code:
             code_data = extract_code(raw_code)
             reply = f"Вот код на {lang}:\n\n{code_data}"
@@ -363,18 +373,22 @@ async def chat(request: ChatRequest):
 
     response_time_ms = int((time.time() - start_time) * 1000)
 
-    query_id = auto_collect_response(
-        user_message=request.message,
-        bot_reply=reply,
-        model_used=model_name,
-        response_time_ms=response_time_ms,
-        session_id=session_id,
-    )
+    try:
+        query_id = auto_collect_response(
+            user_message=request.message,
+            bot_reply=reply,
+            model_used=model_name,
+            response_time_ms=response_time_ms,
+            session_id=session_id,
+        )
+    except Exception as e:
+        logger.error("auto_collect failed: %s", e)
+        query_id = 0
 
-    # Автоназвание для новой сессии (короткое, по теме)
+    # Автоназвание для новой сессии
     final_title = ""
     if is_new_session:
-        final_title = await _generate_session_title(request.message, reply)
+        final_title = _generate_session_title(request.message, reply)
         try:
             conn = get_db()
             cursor = conn.cursor()
@@ -402,7 +416,7 @@ async def chat(request: ChatRequest):
     )
 
 
-async def _generate_session_title(user_msg: str, ai_reply: str) -> str:
+def _generate_session_title(user_msg: str, ai_reply: str) -> str:
     """Генерирует короткое название сессии (3-5 слов)"""
     msg = user_msg.strip()
 

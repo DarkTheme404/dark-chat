@@ -4,18 +4,36 @@ import os
 import uuid
 import json
 import hashlib
+import logging
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.getenv("DB_PATH", "darkchat.db")
 
 
 def get_db():
-    """Подключение к SQLite"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Подключение к SQLite с восстановлением при ошибке"""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+    except Exception as e:
+        logger.error("DB connection failed: %s, recreating...", e)
+        # Если БД повреждена — удаляем и создаём заново
+        try:
+            import os
+            os.remove(DB_PATH)
+        except:
+            pass
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        init_db()
+        return conn
 
 
 def init_db():
