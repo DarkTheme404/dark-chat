@@ -86,10 +86,7 @@ export const api = {
   },
 
   async getMarketData(symbol: string) {
-    const response = await fetchWithTimeout(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1mo`,
-      {}, 15000
-    );
+    const response = await fetchWithTimeout(`${API_BASE}/api/market/${encodeURIComponent(symbol)}?range=3mo&interval=1d`, {}, 15000);
     return response.json();
   },
 };

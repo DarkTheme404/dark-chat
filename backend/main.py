@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import chat, code, image, video, feedback, sessions, upload
+from routers import chat, code, image, video, feedback, sessions, upload, market
 from models import init_db
 
 load_dotenv()
@@ -34,6 +34,7 @@ app.include_router(image.router, prefix="/api/image", tags=["Image"])
 app.include_router(video.router, prefix="/api/video", tags=["Video"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["Feedback & Learning"])
 app.include_router(upload.router, prefix="/api/files", tags=["File Upload & Analysis"])
+app.include_router(market.router, prefix="/api/market", tags=["Market Data"])
 
 
 @app.get("/")
