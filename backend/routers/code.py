@@ -1,10 +1,11 @@
-"""Генерация кода через OpenRouter (бесплатные модели)"""
+"""Генерация кода через OpenRouter"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
 import os
 import re
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -12,10 +13,19 @@ router = APIRouter()
 OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 FREE_CODE_MODELS = [
+    "nvidia/nemotron-nano-9b-v2:free",
     "cohere/north-mini-code:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "nvidia/nemotron-nano-9b-v2:free",
 ]
+
+_http: httpx.AsyncClient | None = None
+
+
+def _get_http() -> httpx.AsyncClient:
+    global _http
+    if _http is None or _http.is_closed:
+        _http = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=5))
+    return _http
 
 
 class CodeRequest(BaseModel):
@@ -30,98 +40,55 @@ class CodeResponse(BaseModel):
 
 
 DEMO_CODES = {
-    "python": '''# {prompt}
-def solution():
-    result = []
-    for i in range(10):
-        result.append(i * 2)
-    return result
-
-if __name__ == "__main__":
-    print(solution())
-''',
-    "javascript": '''// {prompt}
-function solution() {{
-    const result = [];
-    for (let i = 0; i < 10; i++) {{
-        result.push(i * 2);
-    }}
-    return result;
-}}
-console.log(solution());
-''',
+    "python": '# {prompt}\ndef solution():\n    return [i * 2 for i in range(10)]\n\nprint(solution())\n',
+    "javascript": '// {prompt}\nfunction solution() {{ return Array.from({{length: 10}}, (_, i) => i * 2); }}\nconsole.log(solution());\n',
 }
 
 
 def extract_code(raw: str, language: str) -> str:
-    """Извлекает код из ответа модели (убирает markdown блоки)"""
-    # Убираем ```python ... ``` обёртки
-    pattern = r"```(?:\w+)?\s*\n(.*?)```"
-    match = re.search(pattern, raw, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return raw.strip()
+    match = re.search(r"```(?:\w+)?\s*\n(.*?)```", raw, re.DOTALL)
+    return match.group(1).strip() if match else raw.strip()
+
+
+async def _call_one(model_id: str, messages: list, max_tokens: int, temperature: float) -> tuple[str, str] | None:
+    try:
+        payload = {"model": model_id, "messages": messages, "max_tokens": max_tokens, "temperature": temperature}
+        http = _get_http()
+        resp = await http.post(OPENROUTER_URL, json=payload,
+                               headers={"Authorization": f"Bearer {OPENROUTER_TOKEN}", "Content-Type": "application/json"})
+        if resp.status_code == 200:
+            reply = resp.json()["choices"][0]["message"]["content"]
+            return reply, model_id.split("/")[-1].replace(":free", "")
+    except Exception:
+        pass
+    return None
 
 
 @router.post("/generate", response_model=CodeResponse)
 async def generate_code(request: CodeRequest):
-    """Сгенерировать код по описанию"""
-
-    lang_map = {
-        "python": "Python",
-        "javascript": "JavaScript",
-        "typescript": "TypeScript",
-        "go": "Go",
-        "java": "Java",
-        "c++": "C++",
-        "rust": "Rust",
-    }
-    lang_name = lang_map.get(request.language, request.language)
+    lang_name = {"python": "Python", "javascript": "JavaScript", "typescript": "TypeScript",
+                 "go": "Go", "java": "Java", "c++": "C++", "rust": "Rust"}.get(request.language, request.language)
 
     if OPENROUTER_TOKEN:
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    f"Ты — профессиональный программист. Пиши код на {lang_name}.\n"
-                    "ПРАВИЛА:\n"
-                    "- Генерируй ТОЛЬКО код, без объяснений, без markdown\n"
-                    "- Не оборачивай в ``` блоки\n"
-                    "- Не пиши заголовков типа 'Here is the code:'\n"
-                    "- Просто начни с кода сразу\n"
-                    "- Код должен быть рабочим и содержать комментарии на русском\n"
-                ),
-            },
+            {"role": "system", "content": f"Пиши код на {lang_name}. Только код. Без markdown обёрток."},
             {"role": "user", "content": request.prompt},
         ]
 
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_TOKEN}",
-            "Content-Type": "application/json",
-        }
+        # Параллельно 2 модели
+        tasks = [_call_one(m, messages, 1024, 0.3) for m in FREE_CODE_MODELS[:2]]
+        done, _ = await asyncio.wait(tasks, timeout=20.0, return_when=asyncio.FIRST_COMPLETED)
+        for t in done:
+            result = t.result()
+            if result:
+                code = extract_code(result[0], request.language)
+                return CodeResponse(code=code, language=request.language, model=result[1])
 
-        for model_id in FREE_CODE_MODELS:
-            try:
-                payload = {
-                    "model": model_id,
-                    "messages": messages,
-                    "max_tokens": 2048,
-                    "temperature": 0.3,
-                }
-
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-                    if response.status_code == 200:
-                        result = response.json()
-                        raw_code = result["choices"][0]["message"]["content"]
-                        code = extract_code(raw_code, request.language)
-                        model_name = model_id.split("/")[-1].replace(":free", "")
-                        logger.info("Code generated: %d chars from %s", len(code), model_name)
-                        return CodeResponse(code=code, language=request.language, model=model_name)
-            except Exception as e:
-                logger.error("Code model %s error: %s", model_id, e)
-                continue
+        # Третья модель
+        result = await _call_one(FREE_CODE_MODELS[2], messages, 1024, 0.3) if len(FREE_CODE_MODELS) > 2 else None
+        if result:
+            code = extract_code(result[0], request.language)
+            return CodeResponse(code=code, language=request.language, model=result[1])
 
     template = DEMO_CODES.get(request.language, DEMO_CODES["python"])
-    code = template.format(prompt=request.prompt)
-    return CodeResponse(code=code, language=request.language, model="demo")
+    return CodeResponse(code=template.format(prompt=request.prompt), language=request.language, model="demo")

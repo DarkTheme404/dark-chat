@@ -9,7 +9,8 @@ import re
 import base64
 import urllib.parse
 import logging
-from models import get_db, auto_collect_response, get_best_model
+import asyncio
+from models import get_db, auto_collect_response
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,198 +18,167 @@ router = APIRouter()
 OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# Быстрые маленькие модели ПЕРВЫМИ
 FREE_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-nano-9b-v2:free",
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
 ]
 
 FREE_CODE_MODELS = [
+    "nvidia/nemotron-nano-9b-v2:free",
     "cohere/north-mini-code:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "nvidia/nemotron-nano-9b-v2:free",
 ]
 
-# === Паттерны для определения намерения ===
+# Один HTTP-клиент на весь процесс (reuse connections)
+_http: httpx.AsyncClient | None = None
 
+
+def _get_http() -> httpx.AsyncClient:
+    global _http
+    if _http is None or _http.is_closed:
+        _http = httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=10))
+    return _http
+
+
+# === Паттерны ===
 IMAGE_KEYWORDS = [
-    r"(?:сгенерируй|создай|нарисуй|покажи|сделай)\s+(?:фото|картинку|изображение|рисунок|иллюстрацию)",
-    r"(?:фото|картинку|изображение|рисунок)\s+(?:кота|собаки|пейзажа|человека|горы|моря|космоса)",
-    r"(?:generate|create|draw|make)\s+(?:an?\s+)?(?:image|picture|photo|illustration)",
-    r"^(?:фото|картинка|изображение)\s+",
+    r"(?:сгенерируй|создай|нарисуй|покажи|сделай)\s+(?:фото|картинку|изображение|рисунок)",
+    r"(?:фото|картинку|изображение)\s+(?:кота|собаки|пейзажа|человека)",
     r"(?:хочу|дай|покажи)\s+(?:фото|картинку|изображение)",
 ]
 
 CODE_KEYWORDS = [
-    r"(?:напиши|создай|сгенерируй|покажи)\s+(?:код|функцию|скрипт|программу|класс|модуль)",
-    r"(?:код|функцию|скрипт|программу)\s+(?:на|для)\s+(?:python|javascript|typescript|java|go|rust|c\+\+|php|ruby|swift|kotlin)",
-    r"(?:как\s+(?:написать|сделать|реализовать))\s+",
-    r"(?:напиши|сделай)\s+(?:бота|парсер|爬虫|API|сервер|клиент)",
-    r"(?:код|code)\s+",
+    r"(?:напиши|создай|сгенерируй)\s+(?:код|функцию|скрипт|программу|класс)",
+    r"(?:код|функцию|скрипт)\s+(?:на|для)\s+(?:python|javascript|typescript|java|go|rust|c\+\+|php|ruby)",
     r"```",
 ]
 
 VIDEO_KEYWORDS = [
-    r"(?:сгенерируй|создай|сделай)\s+(?:видео|ролик|клип|анимацию)",
-    r"(?:видео|ролик|клип|анимацию)\s+(?:про|из|с|о)\s+",
-    r"(?:generate|create|make)\s+(?:a\s+)?(?:video|clip|animation)",
-    r"(?:хочу|дай|покажи)\s+видео",
+    r"(?:сгенерируй|создай|сделай)\s+(?:видео|ролик|клип)",
+    r"(?:видео|ролик)\s+(?:про|из|с|о)\s+",
 ]
 
 ANALYSIS_KEYWORDS = [
     r"проанализируй",
     r"(?:анализ|что\s+с\s+)(?:цена|курс|рынок|акции|биткоин|btc|eth|crypto)",
-    r"(?:тренд|уровни|поддержк|сопротивл|сигнал|точк[ауи]\s+(?:входа|выхода))",
-    r"(?:стоит\s+(?:покупать|продавать|входить))",
 ]
 
 
 def detect_intent(message: str) -> str:
-    """Определяет намерение пользователя по сообщению"""
     msg_lower = message.lower().strip()
-
-    for pattern in IMAGE_KEYWORDS:
-        if re.search(pattern, msg_lower):
-            return "image"
-
-    for pattern in CODE_KEYWORDS:
-        if re.search(pattern, msg_lower):
-            return "code"
-
-    for pattern in VIDEO_KEYWORDS:
-        if re.search(pattern, msg_lower):
-            return "video"
-
-    for pattern in ANALYSIS_KEYWORDS:
-        if re.search(pattern, msg_lower):
-            return "analysis"
-
+    for kw, intent in [
+        (IMAGE_KEYWORDS, "image"),
+        (CODE_KEYWORDS, "code"),
+        (VIDEO_KEYWORDS, "video"),
+        (ANALYSIS_KEYWORDS, "analysis"),
+    ]:
+        for pattern in kw:
+            if re.search(pattern, msg_lower):
+                return intent
     return "chat"
 
 
 def extract_image_prompt(message: str) -> str:
-    """Извлекает промпт для генерации изображения из сообщения"""
-    # Убираем ключевые слова-маркеры
-    cleaned = message
-    for pattern in [
-        r"(?:сгенерируй|создай|нарисуй|покажи|сделай)\s+",
-        r"(?:фото|картинку|изображение|рисунок|иллюстрацию)\s+(?:кота|собаки|пейзажа|)?",
-        r"(?:хочу|дай|покажи)\s+(?:фото|картинку|изображение)\s+",
-    ]:
-        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
-
-    cleaned = cleaned.strip()
-    if len(cleaned) < 3:
-        cleaned = message
-    return cleaned
+    cleaned = re.sub(
+        r"(?:сгенерируй|создай|нарисуй|покажи|сделай)\s+(?:фото|картинку|изображение|рисунок)?\s*",
+        "", message, flags=re.IGNORECASE
+    ).strip()
+    return cleaned if len(cleaned) > 3 else message
 
 
 def extract_code_prompt(message: str) -> tuple[str, str]:
-    """Извлекает промпт и язык программирования"""
     lang = "python"
     msg_lower = message.lower()
-
-    lang_map = {
-        "python": "python", "питон": "python", "пайтон": "python",
-        "javascript": "javascript", "js": "javascript", "джаваскрипт": "javascript",
-        "typescript": "typescript", "ts": "typescript",
-        "java": "java", "джава": "java",
-        "go": "go", "голанг": "go", "golang": "go",
-        "rust": "rust", "раст": "rust",
-        "c++": "c++", "c#": "c++", "си++": "c++",
-        "php": "php", "пхп": "php",
-        "ruby": "ruby", "руби": "ruby",
-    }
-
-    for key, val in lang_map.items():
+    for key, val in {"python": "python", "javascript": "javascript", "js": "javascript",
+                     "typescript": "typescript", "java": "java", "go": "go",
+                     "rust": "rust", "c++": "c++", "php": "php", "ruby": "ruby"}.items():
         if key in msg_lower:
             lang = val
             break
-
-    # Убираем ключевые слова
-    cleaned = message
-    for pattern in [
-        r"(?:напиши|создай|сгенерируй|покажи)\s+(?:код|функцию|скрипт|программу|класс)?\s*",
-        r"(?:на|для)\s+(?:python|javascript|typescript|java|go|rust|c\+\+|php|ruby)\s*",
-    ]:
-        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
-
-    cleaned = cleaned.strip()
-    if len(cleaned) < 3:
-        cleaned = message
-    return cleaned, lang
+    cleaned = re.sub(
+        r"(?:напиши|создай|сгенерируй)\s+(?:код|функцию|скрипт|программу)?\s*(?:на|для)?\s*(?:python|javascript|typescript|java|go|rust|c\+\+|php|ruby)?\s*",
+        "", message, flags=re.IGNORECASE
+    ).strip()
+    return (cleaned if len(cleaned) > 3 else message), lang
 
 
 def extract_video_prompt(message: str) -> str:
-    """Извлекает промпт для видео"""
-    cleaned = message
-    for pattern in [
-        r"(?:сгенерируй|создай|сделай)\s+(?:видео|ролик|клип|анимацию)\s+",
-        r"(?:видео|ролик|клип)\s+(?:про|из|с|о)\s+",
-        r"(?:хочу|дай|покажи)\s+видео\s+",
-    ]:
-        cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
-
-    cleaned = cleaned.strip()
-    if len(cleaned) < 3:
-        cleaned = message
-    return cleaned
+    cleaned = re.sub(
+        r"(?:сгенерируй|создай|сделай)\s+(?:видео|ролик|клип)\s+",
+        "", message, flags=re.IGNORECASE
+    ).strip()
+    return cleaned if len(cleaned) > 3 else message
 
 
-async def call_ai(messages: list, model_list: list = None, max_tokens: int = 1024, temperature: float = 0.7) -> tuple[str, str]:
-    """Вызывает AI модель, возвращает (reply, model_name)"""
+async def _call_one_model(model_id: str, messages: list, max_tokens: int, temperature: float) -> tuple[str, str] | None:
+    """Вызывает одну модель, возвращает (reply, model_name) или None"""
+    try:
+        payload = {
+            "model": model_id,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        http = _get_http()
+        response = await http.post(
+            OPENROUTER_URL, json=payload,
+            headers={"Authorization": f"Bearer {OPENROUTER_TOKEN}", "Content-Type": "application/json"},
+        )
+        if response.status_code == 200:
+            result = response.json()
+            reply = result["choices"][0]["message"]["content"]
+            name = model_id.split("/")[-1].replace(":free", "")
+            return reply, name
+    except Exception as e:
+        logger.debug("Model %s failed: %s", model_id, e)
+    return None
+
+
+async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512, temperature: float = 0.7) -> tuple[str, str]:
+    """Параллельно пробует 2 модели, возвращает первый ответ"""
     if not OPENROUTER_TOKEN:
         return "", "demo"
 
     models = model_list or FREE_MODELS
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_TOKEN}",
-        "Content-Type": "application/json",
-    }
 
-    for model_id in models:
-        try:
-            payload = {
-                "model": model_id,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-                if response.status_code == 200:
-                    result = response.json()
-                    reply = result["choices"][0]["message"]["content"]
-                    model_name = model_id.split("/")[-1].replace(":free", "")
-                    return reply, model_name
-        except Exception as e:
-            logger.error("Model %s error: %s", model_id, e)
-            continue
+    # Пробуем первые 2 модели параллельно
+    batch = models[:2]
+    tasks = [_call_one_model(m, messages, max_tokens, temperature) for m in batch]
+    done, _ = await asyncio.wait(tasks, timeout=20.0, return_when=asyncio.FIRST_COMPLETED)
+
+    for task in done:
+        result = task.result()
+        if result:
+            return result
+
+    # Если первые 2 не ответили — третья
+    if len(models) > 2:
+        result = await _call_one_model(models[2], messages, max_tokens, temperature)
+        if result:
+            return result
+
     return "", "demo"
 
 
 async def generate_image(prompt: str) -> str:
-    """Генерирует изображение через Pollinations.ai, возвращает base64 data URL"""
     try:
         encoded = urllib.parse.quote(prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            response = await client.get(url)
-            if response.status_code == 200 and len(response.content) > 1000:
-                b64 = base64.b64encode(response.content).decode()
-                return f"data:image/png;base64,{b64}"
+        http = _get_http()
+        response = await http.get(url, follow_redirects=True)
+        if response.status_code == 200 and len(response.content) > 1000:
+            b64 = base64.b64encode(response.content).decode()
+            return f"data:image/png;base64,{b64}"
     except Exception as e:
         logger.error("Image gen error: %s", e)
     return ""
 
 
 def extract_code(raw: str) -> str:
-    """Извлекает код из markdown блоков"""
     match = re.search(r"```(?:\w+)?\s*\n(.*?)```", raw, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return raw.strip()
+    return match.group(1).strip() if match else raw.strip()
 
 
 class ChatRequest(BaseModel):
@@ -233,8 +203,6 @@ class ChatResponse(BaseModel):
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Универсальный чат: авто-роутинг на генераторы + AI ответ"""
-
     session_id = request.session_id
     is_new_session = False
     if not session_id:
@@ -242,16 +210,12 @@ async def chat(request: ChatRequest):
         is_new_session = True
         try:
             conn = get_db()
-            cursor = conn.cursor()
             title = request.message[:30] + "..." if len(request.message) > 30 else request.message
-            cursor.execute(
-                "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
-                (session_id, title)
-            )
+            conn.execute("INSERT INTO sessions (session_id, title) VALUES (?, ?)", (session_id, title))
             conn.commit()
             conn.close()
         except Exception as e:
-            logger.error("Failed to create session: %s", e)
+            logger.error("create session: %s", e)
 
     intent = detect_intent(request.message)
     start_time = time.time()
@@ -265,175 +229,115 @@ async def chat(request: ChatRequest):
     gen_name = ""
 
     if intent == "image":
-        # Генерация изображения
         img_prompt = extract_image_prompt(request.message)
-        reply = f"Генерирую изображение: {img_prompt}..."
+        reply = f"Генерирую: {img_prompt}..."
         try:
             image_data = await generate_image(img_prompt)
         except Exception as e:
-            logger.error("Image generation failed: %s", e)
+            logger.error("Image: %s", e)
             image_data = ""
-        if image_data:
-            reply = f"Вот изображение по запросу: {img_prompt}"
-            resp_type = "image"
-        else:
-            reply = f"Не удалось сгенерировать изображение для: {img_prompt}. Попробуйте переформулировать."
+        reply = f"Изображение: {img_prompt}" if image_data else f"Не удалось: {img_prompt}"
+        resp_type = "image" if image_data else "text"
         model_name = "Pollinations.ai"
 
     elif intent == "code":
-        # Генерация кода
         code_prompt, lang = extract_code_prompt(request.message)
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    f"Ты — профессиональный программист. Пиши код на {lang}.\n"
-                    "Генерируй ТОЛЬКО код, без объяснений, без markdown обёрток.\n"
-                    "Не пиши заголовков. Код должен быть рабочим с комментариями на русском."
-                ),
-            },
+            {"role": "system", "content": f"Пиши код на {lang}. Только код с комментариями на русском. Без markdown."},
             {"role": "user", "content": code_prompt},
         ]
         try:
-            raw_code, model_name = await call_ai(messages, FREE_CODE_MODELS, max_tokens=2048, temperature=0.3)
+            raw_code, model_name = await call_ai(messages, FREE_CODE_MODELS, max_tokens=1024, temperature=0.3)
         except Exception as e:
-            logger.error("Code generation failed: %s", e)
+            logger.error("Code: %s", e)
             raw_code = ""
         if raw_code:
             code_data = extract_code(raw_code)
-            reply = f"Вот код на {lang}:\n\n{code_data}"
+            reply = f"Код на {lang}:\n\n{code_data}"
             resp_type = "code"
             lang_data = lang
         else:
-            reply = "Не удалось сгенерировать код. Попробуйте позже."
+            reply = "Не удалось сгенерировать код."
 
     elif intent == "video":
-        # Видео-генерация (редирект)
         vid_prompt = extract_video_prompt(request.message)
         redirect_url = f"https://flatai.org/ai-video-generator/?prompt={urllib.parse.quote(vid_prompt)}"
         gen_name = "FlatAI"
-        reply = (
-            f"Для генерации видео перейдите на {gen_name}:\n"
-            f"{redirect_url}\n\n"
-            f"Промпт: {vid_prompt}\n"
-            f"FlatAI — бесплатно, без регистрации, без водяного знака."
-        )
+        reply = f"Видео генератор: {redirect_url}\nПромпт: {vid_prompt}\nБесплатно, без регистрации."
         resp_type = "video"
         model_name = "FlatAI"
 
     elif intent == "analysis":
-        # Торговый анализ
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Ты — финансовый аналитик. Дай краткий анализ по запросу.\n"
-                    "Укажи: тренд, уровни поддержки/сопротивления, рекомендацию.\n"
-                    "Отвечай на русском, кратко и по делу."
-                ),
-            },
+            {"role": "system", "content": "Финансовый аналитик. Тренд, уровни, рекомендация. Кратко, на русском."},
             {"role": "user", "content": request.message},
         ]
         reply, model_name = await call_ai(messages)
         if not reply:
-            reply = "Не удалось выполнить анализ. Попробуйте позже."
-        resp_type = "text"
+            reply = "Не удалось выполнить анализ."
 
     else:
-        # Обычный чат — загружаем историю из БД
         messages = [
-            {"role": "system", "content": "Ты — Dark Chat, умный AI-ассистент. Отвечай на русском языке кратко и по делу. Не используй markdown разметку. Ты помнишь всю предыдущую беседу в этой сессии."},
+            {"role": "system", "content": "Ты — Dark Chat. Отвечай на русском кратко и по делу. Помнишь беседу."},
         ]
-
-        # Загружаем историю из БД если есть session_id
         if session_id:
             try:
                 conn = get_db()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT user_message, bot_reply FROM queries WHERE session_id = ? ORDER BY created_at ASC LIMIT 20",
+                rows = conn.execute(
+                    "SELECT user_message, bot_reply FROM queries WHERE session_id = ? ORDER BY created_at DESC LIMIT 10",
                     (session_id,)
-                )
-                for row in cursor.fetchall():
-                    messages.append({"role": "user", "content": row[0]})
-                    messages.append({"role": "assistant", "content": row[1]})
+                ).fetchall()
                 conn.close()
+                for row in reversed(rows):
+                    messages.insert(1, {"role": "user", "content": row[0]})
+                    messages.insert(2, {"role": "assistant", "content": row[1]})
             except Exception as e:
-                logger.error("Failed to load history: %s", e)
+                logger.error("History: %s", e)
 
-        # Добавляем историю из фронтенда если есть
-        for msg in request.history:
+        for msg in request.history[-6:]:
             messages.append(msg)
-
         messages.append({"role": "user", "content": request.message})
-
         reply, model_name = await call_ai(messages)
         if not reply:
-            reply = f"[Dark Chat] {request.message}\n\nЭто демо-режим. Задай OPENROUTER_TOKEN для работы с AI."
+            reply = "Это демо-режим. Задай OPENROUTER_TOKEN."
 
     response_time_ms = int((time.time() - start_time) * 1000)
 
     try:
         query_id = auto_collect_response(
-            user_message=request.message,
-            bot_reply=reply,
-            model_used=model_name,
-            response_time_ms=response_time_ms,
-            session_id=session_id,
+            user_message=request.message, bot_reply=reply,
+            model_used=model_name, response_time_ms=response_time_ms, session_id=session_id,
         )
-    except Exception as e:
-        logger.error("auto_collect failed: %s", e)
+    except Exception:
         query_id = 0
 
-    # Автоназвание для новой сессии
     final_title = ""
     if is_new_session:
         final_title = _generate_session_title(request.message, reply)
         try:
             conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE sessions SET title = ? WHERE session_id = ?",
-                (final_title, session_id)
-            )
+            conn.execute("UPDATE sessions SET title = ? WHERE session_id = ?", (final_title, session_id))
             conn.commit()
             conn.close()
-        except Exception as e:
-            logger.error("Failed to update title: %s", e)
+        except Exception:
+            pass
 
     return ChatResponse(
-        reply=reply,
-        model=model_name,
-        query_id=query_id,
-        session_id=session_id,
-        session_title=final_title,
-        type=resp_type,
-        image=image_data,
-        code=code_data,
-        language=lang_data,
-        redirect_url=redirect_url,
-        generator=gen_name,
+        reply=reply, model=model_name, query_id=query_id,
+        session_id=session_id, session_title=final_title,
+        type=resp_type, image=image_data, code=code_data,
+        language=lang_data, redirect_url=redirect_url, generator=gen_name,
     )
 
 
 def _generate_session_title(user_msg: str, ai_reply: str) -> str:
-    """Генерирует короткое название сессии (3-5 слов)"""
     msg = user_msg.strip()
-
-    # Убираем стартовые слова и конструкции
     cleaned = msg.lower()
-    for prefix in ["помоги мне ", "помоги ", "объясни мне ", "объясни ", "расскажи мне ",
-                    "расскажи ", "сгенерируй ", "создай ", "напиши мне ", "напиши ",
-                    "нарисуй ", "покажи ", "сделай ", "проанализируй ", "что такое ",
-                    "как ", "почему ", "можно ли ", "нужно ли ", "хочу ",
-                    "дай мне ", "дай ", "вопрос: ", "задача: "]:
+    for prefix in ["помоги мне ", "помоги ", "объясни ", "расскажи ", "сгенерируй ",
+                    "создай ", "напиши ", "нарисуй ", "покажи ", "сделай ",
+                    "проанализируй ", "что такое ", "как ", "почему ", "хочу ", "дай "]:
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix):]
             break
-
-    # Берём первые значимые слова
-    words = cleaned.split()[:5]
-    title = " ".join(words)
-    if len(title) < 3:
-        title = msg[:40]
-    return title[:50]
+    title = " ".join(cleaned.split()[:5])
+    return title[:50] if len(title) >= 3 else msg[:40]
