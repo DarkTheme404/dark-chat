@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from models import get_db, init_db, FeedbackCreate, TrainingPairCreate, TrainingMetrics
+from models import get_db, init_db, FeedbackCreate, TrainingPairCreate
 
 router = APIRouter()
 
