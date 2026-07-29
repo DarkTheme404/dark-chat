@@ -11,6 +11,6 @@ services:
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11"
+        value: "3.12.11"
       - key: HF_TOKEN
         sync: false
