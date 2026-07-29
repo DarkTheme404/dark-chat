@@ -11,6 +11,12 @@ interface Message {
   content: string;
   tab: Tab;
   queryId?: number;
+  responseType?: string;
+  imageData?: string;
+  codeData?: string;
+  language?: string;
+  redirectUrl?: string;
+  generator?: string;
 }
 
 function App() {
@@ -76,6 +82,12 @@ function App() {
       let response = '';
       let queryId = 0;
       let newSessionId = '';
+      let responseType = 'text';
+      let imageData = '';
+      let codeData = '';
+      let language = '';
+      let redirectUrl = '';
+      let generator = '';
 
       switch (activeTab) {
         case 'chat': {
@@ -83,6 +95,12 @@ function App() {
           response = chatRes.reply;
           queryId = chatRes.query_id;
           newSessionId = chatRes.session_id;
+          responseType = chatRes.type || 'text';
+          imageData = chatRes.image || '';
+          codeData = chatRes.code || '';
+          language = chatRes.language || '';
+          redirectUrl = chatRes.redirect_url || '';
+          generator = chatRes.generator || '';
           break;
         }
         case 'code': {
@@ -110,7 +128,19 @@ function App() {
         setRefreshTrigger(prev => prev + 1);
       }
 
-      const assistantMessage: Message = { id: Date.now() + 1, type: 'assistant', content: response, tab: activeTab, queryId };
+      const assistantMessage: Message = {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: response,
+        tab: activeTab,
+        queryId,
+        responseType,
+        imageData,
+        codeData,
+        language,
+        redirectUrl,
+        generator,
+      };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error:', error);
@@ -204,12 +234,17 @@ function App() {
                       <div className="user-message">{msg.content}</div>
                     ) : (
                       <div className="assistant-message">
-                        {msg.tab === 'image' && msg.content.startsWith('data:') ? (
-                          <ImageBlock src={msg.content} />
-                        ) : msg.tab === 'code' ? (
-                          <CodeBlock code={msg.content} />
-                        ) : msg.tab === 'video' && msg.content.startsWith('data:') ? (
-                          <div className="video-block"><video src={msg.content} controls /></div>
+                        {msg.responseType === 'image' && msg.imageData ? (
+                          <ImageBlock src={msg.imageData} />
+                        ) : msg.responseType === 'code' && msg.codeData ? (
+                          <CodeBlock code={msg.codeData} />
+                        ) : msg.responseType === 'video' && msg.redirectUrl ? (
+                          <div className="video-redirect">
+                            <p>{msg.content}</p>
+                            <a href={msg.redirectUrl} target="_blank" rel="noopener noreferrer" className="btn-video-link">
+                              🎬 Открыть {msg.generator || 'генератор видео'}
+                            </a>
+                          </div>
                         ) : (
                           <ChatMessage content={msg.content} />
                         )}

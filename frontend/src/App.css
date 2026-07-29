@@ -1054,6 +1054,31 @@ body {
   font-size: 13px;
 }
 
+/* === VIDEO REDIRECT === */
+.video-redirect {
+  text-align: center;
+}
+
+.video-redirect p {
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.btn-video-link {
+  display: inline-block;
+  padding: 10px 24px;
+  background: #7c7cff;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.btn-video-link:hover {
+  background: #6a6aee;
+}
+
 /* === МОБИЛЬНЫЕ === */
 
 /* === МОБИЛЬНЫЕ === */
