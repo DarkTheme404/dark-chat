@@ -20,6 +20,115 @@ interface Message {
   fileUrl?: string;
 }
 
+/* ============ NEURAL NETWORK BACKGROUND ============ */
+function NeuralBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId: number;
+    let w = 0, h = 0;
+    const nodes: { x: number; y: number; vx: number; vy: number; r: number }[] = [];
+    const NODE_COUNT = 40;
+
+    const resize = () => {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    };
+
+    const init = () => {
+      resize();
+      nodes.length = 0;
+      for (let i = 0; i < NODE_COUNT; i++) {
+        nodes.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          vx: (Math.random() - 0.5) * 0.3,
+          vy: (Math.random() - 0.5) * 0.3,
+          r: 1.5 + Math.random() * 2,
+        });
+      }
+    };
+
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw connections
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 180) {
+            const alpha = (1 - dist / 180) * 0.15;
+            ctx.strokeStyle = `rgba(0, 240, 255, ${alpha})`;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.6)';
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glow
+        const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 4);
+        grad.addColorStop(0, 'rgba(0, 240, 255, 0.15)');
+        grad.addColorStop(1, 'rgba(0, 240, 255, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r * 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Move
+        n.x += n.vx;
+        n.y += n.vy;
+        if (n.x < 0 || n.x > w) n.vx *= -1;
+        if (n.y < 0 || n.y > h) n.vy *= -1;
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    init();
+    draw();
+    window.addEventListener('resize', resize);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="neural-bg" />;
+}
+
+/* ============ THINKING TOGGLE ============ */
+function ThinkingToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <div className={`thinking-toggle ${active ? 'active' : ''}`} onClick={onToggle} title={
+      active ? 'Глубокое мышление: умные модели 550B, длинные ответы' : 'Быстрый режим: лёгкие модели, мгновенные ответы'
+    }>
+      <div className="thinking-track">
+        <div className="thinking-knob" />
+      </div>
+      <span className="thinking-label">{active ? 'Deep' : 'Fast'}</span>
+    </div>
+  );
+}
+
+/* ============ MAIN APP ============ */
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -114,10 +223,8 @@ function App() {
 
       if (newSessionId && newSessionId !== activeSession) {
         setActiveSession(newSessionId);
-        // Небольшая задержка чтобы БД обновила название
         setTimeout(() => setRefreshTrigger(prev => prev + 1), 1500);
       } else if (newSessionId && sessionTitle) {
-        // Обновляем список сессий чтобы показать новое название
         setTimeout(() => setRefreshTrigger(prev => prev + 1), 1500);
       }
 
@@ -164,22 +271,24 @@ function App() {
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'chat', label: 'Чат', icon: '💬' },
     { id: 'code', label: 'Код', icon: '💻' },
-    { id: 'image', label: 'Картинки', icon: '🖼️' },
+    { id: 'image', label: 'Картинки', icon: '🖼' },
     { id: 'video', label: 'Видео', icon: '🎬' },
     { id: 'voice', label: 'Озвучка', icon: '🔊' },
     { id: 'trading', label: 'Трейдинг', icon: '📈' },
-    { id: 'admin', label: '⚙️', icon: '' },
+    { id: 'admin', label: 'Настройки', icon: '⚙' },
   ];
 
   return (
     <div className="app">
+      <NeuralBackground />
+
       <header className="header">
         {activeTab === 'chat' && (
           <button className="menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
         )}
         <div className="header-text">
           <h1>Dark Chat</h1>
-          <p>AI-powered ассистент с самообучением</p>
+          <p>Self-learning neural assistant</p>
         </div>
       </header>
 
@@ -228,9 +337,9 @@ function App() {
               <div className="messages">
                 {messages.length === 0 && (
                   <div className="empty-state">
-                    <h2>Добро пожаловать в Dark Chat!</h2>
-                    <p>Отправляйте текст, фото, видео, аудио, документы — AI всё проанализирует</p>
-                    <p className="hint">💡 Фото → описание, Код → генерация, Видео → анализ кадров</p>
+                    <h2>Dark Chat</h2>
+                    <p>Отправляйте текст, фото, видео, аудио, документы — AI всё проанализирует и ответит</p>
+                    <p className="hint">Фото → описание · Код → генерация · Видео → анализ · Документы → чтение</p>
                   </div>
                 )}
 
@@ -248,7 +357,7 @@ function App() {
                           <div className="video-redirect">
                             <p>{msg.content}</p>
                             <a href={msg.redirectUrl} target="_blank" rel="noopener noreferrer" className="btn-video-link">
-                              🎬 Открыть {msg.generator || 'генератор видео'}
+                              Открыть {msg.generator || 'генератор видео'}
                             </a>
                           </div>
                         ) : (
@@ -265,7 +374,7 @@ function App() {
                 {(loading || uploading) && (
                   <div className="loading">
                     <div className="spinner"></div>
-                    <span>{uploading ? 'Загрузка файла...' : 'Генерация...'}</span>
+                    <span>{uploading ? 'Загрузка...' : thinking ? 'Думаю...' : 'Генерирую...'}</span>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -274,30 +383,24 @@ function App() {
               <div className="input-area">
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload}
                   accept="image/*,audio/*,video/*,.pdf,.txt,.csv,.json,.md" className="file-input" />
-                <button className="btn-attach" onClick={() => fileInputRef.current?.click()}
+                <button className="btn-icon" onClick={() => fileInputRef.current?.click()}
                   disabled={loading || uploading} title="Прикрепить файл">📎</button>
                 {activeTab === 'chat' && (
-                  <button
-                    className={`btn-thinking ${thinking ? 'active' : ''}`}
-                    onClick={() => setThinking(!thinking)}
-                    title={thinking ? 'Глубокое мышление: включено (умные модели, длинные ответы)' : 'Быстрый режим (быстрые модели)'}
-                  >
-                    {thinking ? '🧠' : '⚡'}
-                  </button>
+                  <ThinkingToggle active={thinking} onToggle={() => setThinking(!thinking)} />
                 )}
                 <input
                   type="text" value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyPress={e => e.key === 'Enter' && handleSend()}
                   placeholder={
-                    activeTab === 'chat' ? 'Напишите сообщение или прикрепите файл...' :
-                    activeTab === 'code' ? 'Опишите какой код нужен...' :
+                    activeTab === 'chat' ? 'Сообщение...' :
+                    activeTab === 'code' ? 'Какой код нужен...' :
                     activeTab === 'image' ? 'Опишите изображение...' :
                     'Опишите видео...'
                   }
                   disabled={loading || uploading}
                 />
-                <button onClick={handleSend} disabled={loading || uploading || !input.trim()}>
+                <button className="btn-send" onClick={handleSend} disabled={loading || uploading || !input.trim()}>
                   {loading ? '...' : '→'}
                 </button>
               </div>
@@ -382,17 +485,14 @@ function TradingPanel() {
     const q = marketData.indicators.quote[0];
     const closes = (q.close || []).filter((v: number|null) => v != null) as number[];
     if (closes.length < 2) return 'Недостаточно данных';
-
     const last = closes[closes.length - 1];
     const prev = closes[closes.length - 2];
     const high = Math.max(...closes);
     const low = Math.min(...closes);
     const change = ((last - prev) / prev * 100).toFixed(2);
     const changeAll = ((last - closes[0]) / closes[0] * 100).toFixed(2);
-
     const sma20 = closes.slice(-20).reduce((a: number, b: number) => a + b, 0) / Math.min(closes.length, 20);
     const sma50 = closes.slice(-50).reduce((a: number, b: number) => a + b, 0) / Math.min(closes.length, 50);
-
     return `Цена: ${last.toFixed(2)} | Изм: ${change}% (день), ${changeAll}% (период) | High: ${high.toFixed(2)} | Low: ${low.toFixed(2)} | SMA20: ${sma20.toFixed(2)} | SMA50: ${sma50.toFixed(2)} | Точек: ${closes.length}`;
   };
 
@@ -400,10 +500,8 @@ function TradingPanel() {
     setAnalyzing(true);
     setAnalysis('');
     const chartInfo = getChartSummary();
-
     const goalText = goal ? `\nЦель трейдера: ${goal}` : '';
     const strategyText = strategy ? `\nСтратегия: ${strategy}` : '';
-
     const prompt = `Ты профессиональный трейдер-аналитик. Проанализируй ${symbol} на основе данных графика.
 
 ДАННЫЕ ГРАФИКА:
@@ -421,22 +519,17 @@ ${chartInfo}
 7. Риски
 
 Если цель трейдера указана — дай персонализированный совет с учётом его стратегии.`;
-
     try {
       const res = await api.chat(prompt, '');
       setAnalysis(res.reply || 'Не удалось выполнить анализ');
-    } catch {
-      setAnalysis('Ошибка при анализе. Попробуйте позже.');
-    } finally {
-      setAnalyzing(false);
-    }
+    } catch { setAnalysis('Ошибка при анализе. Попробуйте позже.'); }
+    finally { setAnalyzing(false); }
   };
 
   const handleSuggestAsset = async () => {
     if (!goal.trim()) return;
     setAnalyzing(true);
     setAnalysis('');
-
     const prompt = `Ты профессиональный финансовый консультант. Трейдер хочет: ${goal}
 ${strategy ? `Его стратегия: ${strategy}` : ''}
 
@@ -449,15 +542,11 @@ ${strategy ? `Его стратегия: ${strategy}` : ''}
 - Риски
 
 Будь конкретным, цифры и тикеры, не общие слова.`;
-
     try {
       const res = await api.chat(prompt, '');
       setAnalysis(res.reply || 'Не удалось подобрать инструменты');
-    } catch {
-      setAnalysis('Ошибка. Попробуйте позже.');
-    } finally {
-      setAnalyzing(false);
-    }
+    } catch { setAnalysis('Ошибка. Попробуйте позже.'); }
+    finally { setAnalyzing(false); }
   };
 
   return (
@@ -475,7 +564,6 @@ ${strategy ? `Его стратегия: ${strategy}` : ''}
             value={customSymbol} onChange={e => setCustomSymbol(e.target.value)}
             onKeyPress={e => { if (e.key === 'Enter' && customSymbol.trim()) setSymbol(customSymbol.trim().toUpperCase()); }} />
         </div>
-
         <div className="trading-row">
           <div className="interval-btns">
             {periods.map(p => (
@@ -484,24 +572,21 @@ ${strategy ? `Его стратегия: ${strategy}` : ''}
             ))}
           </div>
         </div>
-
         <div className="trading-goals">
-          <input type="text" className="trading-input full" placeholder="🎯 Чего хотите добиться? (напр: заработать 20% за месяц, пассивный доход, хеджирование рисков)"
+          <input type="text" className="trading-input full" placeholder="Чего хотите добиться? (напр: заработать 20% за месяц)"
             value={goal} onChange={e => setGoal(e.target.value)} />
-          <input type="text" className="trading-input full" placeholder="📊 Стратегия (напр: скальпинг, свинг, долгосрочное инвестирование, DCA)"
+          <input type="text" className="trading-input full" placeholder="Стратегия (напр: скальпинг, свинг, DCA)"
             value={strategy} onChange={e => setStrategy(e.target.value)} />
         </div>
-
         <div className="trading-actions">
           <button className="btn-analyze" onClick={handleFullAnalyze} disabled={analyzing}>
-            {analyzing ? '...' : '🧠 Анализ графика'}
+            {analyzing ? '...' : 'Анализ графика'}
           </button>
           <button className="btn-suggest" onClick={handleSuggestAsset} disabled={analyzing || !goal.trim()}>
-            {analyzing ? '...' : '🎯 Подобрать инструмент'}
+            {analyzing ? '...' : 'Подобрать инструмент'}
           </button>
         </div>
       </div>
-
       <div className="trading-chart">
         <iframe
           key={`${symbol}-${period}`}
@@ -509,16 +594,12 @@ ${strategy ? `Его стратегия: ${strategy}` : ''}
           frameBorder="0" scrolling="no" title="TradingView Chart"
         />
       </div>
-
       {marketData && (
-        <div className="market-summary">
-          <span>{getChartSummary()}</span>
-        </div>
+        <div className="market-summary"><span>{getChartSummary()}</span></div>
       )}
-
       {analysis && (
         <div className="trading-analysis">
-          <h3>📊 Анализ</h3>
+          <h3>Анализ</h3>
           <ChatMessage content={analysis} />
         </div>
       )}
@@ -543,7 +624,6 @@ function VoicePanel() {
   useEffect(() => {
     const loadVoices = () => {
       const v = window.speechSynthesis?.getVoices() || [];
-      // Приоритет: русские高质量 голоса
       const ru = v.filter(voice => voice.lang.startsWith('ru'));
       const en = v.filter(voice => voice.lang.startsWith('en') && voice.name.includes('Google'));
       setVoices(ru.length > 0 ? ru : [...en, ...v.slice(0, 10)]);
@@ -556,33 +636,18 @@ function VoicePanel() {
   const speak = () => {
     if (!text.trim() || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-
-    // Разбиваем длинный текст на предложения для более естественного звучания
     const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
-
     let i = 0;
     const speakNext = () => {
-      if (i >= sentences.length) {
-        setSpeaking(false);
-        setHistory(prev => [{ text: text.slice(0, 80), time: new Date().toLocaleTimeString('ru') }, ...prev].slice(0, 50));
-        return;
-      }
-
+      if (i >= sentences.length) { setSpeaking(false); setHistory(prev => [{ text: text.slice(0, 80), time: new Date().toLocaleTimeString('ru') }, ...prev].slice(0, 50)); return; }
       const utterance = new SpeechSynthesisUtterance(sentences[i].trim());
-      if (selectedVoice) {
-        const voice = voices.find(v => v.name === selectedVoice);
-        if (voice) utterance.voice = voice;
-      }
-      utterance.rate = rate;
-      utterance.pitch = pitch;
-      utterance.volume = volume;
+      if (selectedVoice) { const voice = voices.find(v => v.name === selectedVoice); if (voice) utterance.voice = voice; }
+      utterance.rate = rate; utterance.pitch = pitch; utterance.volume = volume;
       utterance.onend = () => { i++; speakNext(); };
       utterance.onerror = () => { setSpeaking(false); };
       window.speechSynthesis.speak(utterance);
     };
-
-    setSpeaking(true);
-    speakNext();
+    setSpeaking(true); speakNext();
   };
 
   const stopSpeaking = () => { window.speechSynthesis?.cancel(); setSpeaking(false); };
@@ -591,11 +656,8 @@ function VoicePanel() {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { setTranscript('Распознавание не поддерживается'); return; }
     const recognition = new SR();
-    recognition.lang = 'ru-RU';
-    recognition.continuous = false;
-    recognition.interimResults = true;
+    recognition.lang = 'ru-RU'; recognition.continuous = false; recognition.interimResults = true;
     recognitionRef.current = recognition;
-
     recognition.onresult = (event: any) => {
       let final = '', interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -607,83 +669,69 @@ function VoicePanel() {
     };
     recognition.onerror = () => setRecording(false);
     recognition.onend = () => setRecording(false);
-    recognition.start();
-    setRecording(true);
+    recognition.start(); setRecording(true);
   };
 
   const stopRecognition = () => { recognitionRef.current?.stop(); setRecording(false); };
 
   const presets = [
-    { label: '📰 Новости', text: 'Привет! Расскажи последние новости в мире технологий и криптовалют.' },
-    { label: '📖 Рассказ', text: 'Однажды в тёмном ночном городе программист написал код, который изменил мир навсегда. Все забыли про баги, а деплой прошёл с первого раза.' },
-    { label: '🎓 Обучение', text: 'Давай изучим основы Python. Объясни переменные, типы данных и функции простыми словами.' },
-    { label: '😂 Шутка', text: 'Программист пришёл в бар. Бармен говорит: Чего закажешь? Программист: Пиво. Бармен: Пиво не найдено. Программист: Тогда кофе. Бармен: Кофе не найдено. Программист: Ну тогда воду. Бармен: Вода не найдена. Программист: Ну что у вас тогда есть? Бармен: Все функции работают, но данных нет.' },
+    { label: 'Новости', text: 'Привет! Расскажи последние новости в мире технологий и криптовалют.' },
+    { label: 'Рассказ', text: 'Однажды в тёмном ночном городе программист написал код, который изменил мир навсегда. Все забыли про баги, а деплой прошёл с первого раза.' },
+    { label: 'Обучение', text: 'Давай изучим основы Python. Объясни переменные, типы данных и функции простыми словами.' },
+    { label: 'Шутка', text: 'Программист пришёл в бар. Бармен: Чего закажешь? Программист: Пиво. Бармен: Пиво не найдено. Программист: Тогда кофе. Бармен: Кофе не найдено. Ну тогда воду. Бармен: Вода не найдена. Программист: Ну что у вас тогда есть? Бармен: Все функции работают, но данных нет.' },
   ];
 
   return (
     <div className="voice-panel">
       <div className="voice-section">
-        <h3>🔊 Текст в речь</h3>
+        <h3>Текст в речь</h3>
         <textarea className="voice-textarea" value={text} onChange={e => setText(e.target.value)}
           placeholder="Введите текст для озвучки..." rows={4} />
-
         <div className="voice-controls">
           <select className="voice-select" value={selectedVoice} onChange={e => setSelectedVoice(e.target.value)}>
             <option value="">Авто (лучший русский)</option>
-            {voices.map(v => (
-              <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-            ))}
+            {voices.map(v => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
           </select>
-
           <div className="voice-slider">
             <label>Скорость: {rate.toFixed(1)}x</label>
-            <input type="range" min="0.5" max="1.5" step="0.05" value={rate}
-              onChange={e => setRate(parseFloat(e.target.value))} />
+            <input type="range" min="0.5" max="1.5" step="0.05" value={rate} onChange={e => setRate(parseFloat(e.target.value))} />
           </div>
-
           <div className="voice-slider">
             <label>Тон: {pitch.toFixed(1)}</label>
-            <input type="range" min="0.5" max="1.5" step="0.05" value={pitch}
-              onChange={e => setPitch(parseFloat(e.target.value))} />
+            <input type="range" min="0.5" max="1.5" step="0.05" value={pitch} onChange={e => setPitch(parseFloat(e.target.value))} />
           </div>
-
           <div className="voice-slider">
             <label>Громкость: {Math.round(volume * 100)}%</label>
-            <input type="range" min="0.3" max="1" step="0.05" value={volume}
-              onChange={e => setVolume(parseFloat(e.target.value))} />
+            <input type="range" min="0.3" max="1" step="0.05" value={volume} onChange={e => setVolume(parseFloat(e.target.value))} />
           </div>
         </div>
-
         <div className="voice-actions">
           {speaking ? (
-            <button className="btn-voice stop" onClick={stopSpeaking}>⏹ Стоп</button>
+            <button className="btn-voice stop" onClick={stopSpeaking}>Стоп</button>
           ) : (
-            <button className="btn-voice play" onClick={speak} disabled={!text.trim()}>▶ Озвучить</button>
+            <button className="btn-voice play" onClick={speak} disabled={!text.trim()}>Озвучить</button>
           )}
         </div>
-
         <div className="voice-presets">
           {presets.map((p, i) => (
             <button key={i} className="voice-preset" onClick={() => setText(p.text)}>{p.label}</button>
           ))}
         </div>
       </div>
-
       <div className="voice-section">
-        <h3>🎤 Речь в текст</h3>
+        <h3>Речь в текст</h3>
         <div className="voice-actions">
           {recording ? (
-            <button className="btn-voice stop" onClick={stopRecognition}>⏹ Стоп запись</button>
+            <button className="btn-voice stop" onClick={stopRecognition}>Стоп запись</button>
           ) : (
-            <button className="btn-voice record" onClick={startRecognition}>🎙 Записать</button>
+            <button className="btn-voice record" onClick={startRecognition}>Записать</button>
           )}
         </div>
         {transcript && <div className="voice-transcript"><p>{transcript}</p></div>}
       </div>
-
       {history.length > 0 && (
         <div className="voice-section">
-          <h3>📋 История</h3>
+          <h3>История</h3>
           <div className="voice-history">
             {history.map((h, i) => (
               <div key={i} className="voice-history-item">
