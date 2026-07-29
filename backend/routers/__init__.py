@@ -1,3 +1,3 @@
-from . import chat, code, image, video
+from . import chat, code, image, video, feedback, sessions, upload, market
 
-__all__ = ["chat", "code", "image", "video"]
+__all__ = ["chat", "code", "image", "video", "feedback", "sessions", "upload", "market"]
