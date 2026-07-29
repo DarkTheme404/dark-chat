@@ -73,4 +73,23 @@ export const api = {
     });
     return response.json();
   },
+
+  async uploadFile(file: File, message: string = '') {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('message', message);
+    const response = await fetchWithTimeout(`${API_BASE}/api/files/upload`, {
+      method: 'POST',
+      body: formData,
+    }, 120000);
+    return response.json();
+  },
+
+  async getMarketData(symbol: string) {
+    const response = await fetchWithTimeout(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1mo`,
+      {}, 15000
+    );
+    return response.json();
+  },
 };

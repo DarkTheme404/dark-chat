@@ -1079,6 +1079,111 @@ body {
   background: #6a6aee;
 }
 
+/* === FILE UPLOAD === */
+.file-input {
+  display: none;
+}
+
+.btn-attach {
+  background: none;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 18px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-attach:hover {
+  background: #2a2a4a;
+  color: #fff;
+  border-color: #7c7cff;
+}
+
+.btn-attach:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === TRADING EXTRAS === */
+.trading-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.trading-select {
+  padding: 8px 12px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.trading-input {
+  padding: 8px 12px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.trading-input.full {
+  width: 100%;
+}
+
+.trading-input:focus {
+  outline: none;
+  border-color: #7c7cff;
+}
+
+.trading-goals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.trading-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-suggest {
+  padding: 8px 16px;
+  background: #ff6b6b;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-suggest:hover {
+  background: #ee5555;
+}
+
+.btn-suggest:disabled {
+  background: #2a2a4a;
+  cursor: not-allowed;
+}
+
+.market-summary {
+  padding: 8px 16px;
+  background: #0f0f23;
+  border-bottom: 1px solid #2a2a4a;
+  font-size: 12px;
+  color: #888;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
 /* === МОБИЛЬНЫЕ === */
 
 /* === МОБИЛЬНЫЕ === */
@@ -1204,8 +1309,12 @@ body {
     align-items: stretch;
   }
 
-  .trading-controls select {
+  .trading-select {
     width: 100%;
+  }
+
+  .trading-row {
+    flex-direction: column;
   }
 
   .interval-btns {
@@ -1213,7 +1322,11 @@ body {
     justify-content: center;
   }
 
-  .btn-analyze {
+  .trading-actions {
+    flex-direction: column;
+  }
+
+  .btn-analyze, .btn-suggest {
     margin-left: 0;
     width: 100%;
   }
