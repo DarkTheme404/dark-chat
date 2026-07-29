@@ -11,9 +11,9 @@ router = APIRouter()
 OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 FREE_CODE_MODELS = [
-    "poolside/laguna-m.1:free",
     "cohere/north-mini-code:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
+    "nvidia/nemotron-nano-9b-v2:free",
 ]
 
 
