@@ -1107,6 +1107,30 @@ body {
   cursor: not-allowed;
 }
 
+.btn-thinking {
+  background: none;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 18px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-thinking:hover {
+  background: #2a2a4a;
+  border-color: #7c7cff;
+}
+
+.btn-thinking.active {
+  background: #1a0a2e;
+  border-color: #9b59b6;
+  color: #d4a0ff;
+  box-shadow: 0 0 12px rgba(155, 89, 182, 0.3);
+}
+
 /* === TRADING EXTRAS === */
 .trading-row {
   display: flex;

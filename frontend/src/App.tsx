@@ -30,6 +30,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +81,7 @@ function App() {
 
       switch (activeTab) {
         case 'chat': {
-          const chatRes = await api.chat(input, activeSession || '');
+          const chatRes = await api.chat(input, activeSession || '', thinking);
           response = chatRes.reply;
           queryId = chatRes.query_id;
           newSessionId = chatRes.session_id;
@@ -275,6 +276,15 @@ function App() {
                   accept="image/*,audio/*,video/*,.pdf,.txt,.csv,.json,.md" className="file-input" />
                 <button className="btn-attach" onClick={() => fileInputRef.current?.click()}
                   disabled={loading || uploading} title="Прикрепить файл">📎</button>
+                {activeTab === 'chat' && (
+                  <button
+                    className={`btn-thinking ${thinking ? 'active' : ''}`}
+                    onClick={() => setThinking(!thinking)}
+                    title={thinking ? 'Глубокое мышление: включено (умные модели, длинные ответы)' : 'Быстрый режим (быстрые модели)'}
+                  >
+                    {thinking ? '🧠' : '⚡'}
+                  </button>
+                )}
                 <input
                   type="text" value={input}
                   onChange={e => setInput(e.target.value)}

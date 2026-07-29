@@ -12,11 +12,11 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 }
 
 export const api = {
-  async chat(message: string, sessionId: string = '') {
+  async chat(message: string, sessionId: string = '', thinking: boolean = false) {
     const response = await fetchWithTimeout(`${API_BASE}/api/chat/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify({ message, session_id: sessionId, thinking }),
     }, 60000);
     return response.json();
   },

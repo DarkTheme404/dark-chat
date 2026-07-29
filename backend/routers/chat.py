@@ -112,7 +112,7 @@ def extract_video_prompt(message: str) -> str:
     return cleaned if len(cleaned) > 3 else message
 
 
-async def _call_one_model(model_id: str, messages: list, max_tokens: int, temperature: float) -> tuple[str, str] | None:
+async def _call_one_model(model_id: str, messages: list, max_tokens: int, temperature: float, timeout: float = 20.0) -> tuple[str, str] | None:
     """Вызывает одну модель, возвращает (reply, model_name) или None"""
     try:
         payload = {
@@ -125,6 +125,7 @@ async def _call_one_model(model_id: str, messages: list, max_tokens: int, temper
         response = await http.post(
             OPENROUTER_URL, json=payload,
             headers={"Authorization": f"Bearer {OPENROUTER_TOKEN}", "Content-Type": "application/json"},
+            timeout=timeout,
         )
         if response.status_code == 200:
             result = response.json()
@@ -136,7 +137,7 @@ async def _call_one_model(model_id: str, messages: list, max_tokens: int, temper
     return None
 
 
-async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512, temperature: float = 0.7) -> tuple[str, str]:
+async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512, temperature: float = 0.7, timeout: float = 20.0) -> tuple[str, str]:
     """Параллельно пробует 2 модели, возвращает первый ответ"""
     if not OPENROUTER_TOKEN:
         return "", "demo"
@@ -145,8 +146,8 @@ async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512
 
     # Пробуем первые 2 модели параллельно
     batch = models[:2]
-    tasks = [_call_one_model(m, messages, max_tokens, temperature) for m in batch]
-    done, _ = await asyncio.wait(tasks, timeout=20.0, return_when=asyncio.FIRST_COMPLETED)
+    tasks = [_call_one_model(m, messages, max_tokens, temperature, timeout) for m in batch]
+    done, _ = await asyncio.wait(tasks, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
 
     for task in done:
         result = task.result()
@@ -155,7 +156,7 @@ async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512
 
     # Если первые 2 не ответили — третья
     if len(models) > 2:
-        result = await _call_one_model(models[2], messages, max_tokens, temperature)
+        result = await _call_one_model(models[2], messages, max_tokens, temperature, timeout)
         if result:
             return result
 
@@ -185,6 +186,21 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
     history: list[dict] = []
+    thinking: bool = False
+
+
+# Умные модели для глубокого мышления
+THINKING_MODELS = [
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free",
+]
+
+THINKING_CODE_MODELS = [
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "cohere/north-mini-code:free",
+]
 
 
 class ChatResponse(BaseModel):
@@ -228,6 +244,13 @@ async def chat(request: ChatRequest):
     redirect_url = ""
     gen_name = ""
 
+    thinking = getattr(request, 'thinking', False)
+    chat_models = THINKING_MODELS if thinking else FREE_MODELS
+    code_models = THINKING_CODE_MODELS if thinking else FREE_CODE_MODELS
+    chat_tokens = 1024 if thinking else 512
+    code_tokens = 2048 if thinking else 1024
+    chat_timeout = 45.0 if thinking else 20.0
+
     if intent == "image":
         img_prompt = extract_image_prompt(request.message)
         reply = f"Генерирую: {img_prompt}..."
@@ -247,7 +270,7 @@ async def chat(request: ChatRequest):
             {"role": "user", "content": code_prompt},
         ]
         try:
-            raw_code, model_name = await call_ai(messages, FREE_CODE_MODELS, max_tokens=1024, temperature=0.3)
+            raw_code, model_name = await call_ai(messages, code_models, max_tokens=code_tokens, temperature=0.3, timeout=chat_timeout)
         except Exception as e:
             logger.error("Code: %s", e)
             raw_code = ""
@@ -272,9 +295,10 @@ async def chat(request: ChatRequest):
             {"role": "system", "content": "Финансовый аналитик. Тренд, уровни, рекомендация. Кратко, на русском."},
             {"role": "user", "content": request.message},
         ]
-        reply, model_name = await call_ai(messages)
+        reply, model_name = await call_ai(messages, chat_models, max_tokens=chat_tokens, timeout=chat_timeout)
         if not reply:
             reply = "Не удалось выполнить анализ."
+        resp_type = "text"
 
     else:
         messages = [
@@ -297,7 +321,7 @@ async def chat(request: ChatRequest):
         for msg in request.history[-6:]:
             messages.append(msg)
         messages.append({"role": "user", "content": request.message})
-        reply, model_name = await call_ai(messages)
+        reply, model_name = await call_ai(messages, chat_models, max_tokens=chat_tokens, timeout=chat_timeout)
         if not reply:
             reply = "Это демо-режим. Задай OPENROUTER_TOKEN."
 
