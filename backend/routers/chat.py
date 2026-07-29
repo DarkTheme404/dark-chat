@@ -404,19 +404,20 @@ async def chat(request: ChatRequest):
 
 async def _generate_session_title(user_msg: str, ai_reply: str) -> str:
     """Генерирует короткое название сессии (3-5 слов)"""
-    if not OPENROUTER_TOKEN:
-        return user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
+    msg = user_msg.strip()
 
-    messages = [
-        {"role": "system", "content": "Ты генерируешь названия для чатов. Верни ТОЛЬКО название без всего лишнего."},
-        {"role": "user", "content": f"Создай название 3-5 слов для чата:\nПользователь: {user_msg[:150]}\nТема: {ai_reply[:150]}\n\nНазвание:"},
-    ]
+    # Убираем стартовые слова
+    cleaned = msg
+    for prefix in ["помоги ", "объясни ", "расскажи ", "сгенерируй ", "создай ", "напиши ",
+                    "нарисуй ", "покажи ", "сделай ", "проанализируй ", "что ", "как ",
+                    "почему ", "можно ", "нужно ", "хочу ", "дай ", "вопрос: ", "задача: "]:
+        if cleaned.lower().startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
 
-    title, _ = await call_ai(messages, max_tokens=20, temperature=0.2)
-    title = title.strip().strip('"').strip("'").strip(".")
-    # Убираем мусор если модель верла промпт
-    if len(title) > 50 or "generate" in title.lower() or "system" in title.lower():
-        title = ""
+    # Берём первые значимые слова
+    words = cleaned.split()[:5]
+    title = " ".join(words)
     if len(title) < 3:
-        title = user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
+        title = msg[:40]
     return title[:50]
