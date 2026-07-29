@@ -70,6 +70,7 @@ function App() {
       let response = '';
       let queryId = 0;
       let newSessionId = '';
+      let sessionTitle = '';
       let responseType = 'text';
       let imageData = '';
       let codeData = '';
@@ -83,6 +84,7 @@ function App() {
           response = chatRes.reply;
           queryId = chatRes.query_id;
           newSessionId = chatRes.session_id;
+          sessionTitle = chatRes.session_title || '';
           responseType = chatRes.type || 'text';
           imageData = chatRes.image || '';
           codeData = chatRes.code || '';
@@ -111,7 +113,11 @@ function App() {
 
       if (newSessionId && newSessionId !== activeSession) {
         setActiveSession(newSessionId);
-        setRefreshTrigger(prev => prev + 1);
+        // Небольшая задержка чтобы БД обновила название
+        setTimeout(() => setRefreshTrigger(prev => prev + 1), 1500);
+      } else if (newSessionId && sessionTitle) {
+        // Обновляем список сессий чтобы показать новое название
+        setTimeout(() => setRefreshTrigger(prev => prev + 1), 1500);
       }
 
       setMessages(prev => [...prev, {

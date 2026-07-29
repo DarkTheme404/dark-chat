@@ -222,6 +222,7 @@ class ChatResponse(BaseModel):
     model: str = "AI"
     query_id: int = 0
     session_id: str = ""
+    session_title: str = ""
     type: str = "text"
     image: str = ""
     code: str = ""
@@ -235,11 +236,14 @@ async def chat(request: ChatRequest):
     """Универсальный чат: авто-роутинг на генераторы + AI ответ"""
 
     session_id = request.session_id
+    is_new_session = False
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
+        is_new_session = True
         conn = get_db()
         cursor = conn.cursor()
-        title = request.message[:50] + "..." if len(request.message) > 50 else request.message
+        # Временное название — потом обновим через AI
+        title = request.message[:30] + "..." if len(request.message) > 30 else request.message
         cursor.execute(
             "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
             (session_id, title)
@@ -367,11 +371,28 @@ async def chat(request: ChatRequest):
         session_id=session_id,
     )
 
+    # Автоназвание для новой сессии (короткое, по теме)
+    final_title = ""
+    if is_new_session:
+        final_title = await _generate_session_title(request.message, reply)
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE sessions SET title = ? WHERE session_id = ?",
+                (final_title, session_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error("Failed to update title: %s", e)
+
     return ChatResponse(
         reply=reply,
         model=model_name,
         query_id=query_id,
         session_id=session_id,
+        session_title=final_title,
         type=resp_type,
         image=image_data,
         code=code_data,
@@ -379,3 +400,27 @@ async def chat(request: ChatRequest):
         redirect_url=redirect_url,
         generator=gen_name,
     )
+
+
+async def _generate_session_title(user_msg: str, ai_reply: str) -> str:
+    """Генерирует короткое название сессии через AI (3-5 слов)"""
+    if not OPENROUTER_TOKEN:
+        return user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
+
+    messages = [
+        {"role": "system", "content": (
+            "Сгенерируй КОРОТКОЕ название для чата (3-5 слов на русском).\n"
+            "Название должно отражать тему разговора.\n"
+            "Только название, без кавычек, без точек, без лишнего текста.\n"
+            "Примеры: 'Рецепт борща', 'Python функции', 'Анализ Bitcoin', 'Генерация фото'"
+        )},
+        {"role": "user", "content": f"Пользователь: {user_msg[:200]}\nОтвет: {ai_reply[:200]}"},
+    ]
+
+    title, _ = await call_ai(messages, max_tokens=30, temperature=0.3)
+    title = title.strip().strip('"').strip("'").strip(".")
+    if len(title) > 50:
+        title = title[:50]
+    if len(title) < 3:
+        title = user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
+    return title
