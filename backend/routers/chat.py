@@ -403,24 +403,20 @@ async def chat(request: ChatRequest):
 
 
 async def _generate_session_title(user_msg: str, ai_reply: str) -> str:
-    """Генерирует короткое название сессии через AI (3-5 слов)"""
+    """Генерирует короткое название сессии (3-5 слов)"""
     if not OPENROUTER_TOKEN:
         return user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
 
     messages = [
-        {"role": "system", "content": (
-            "Сгенерируй КОРОТКОЕ название для чата (3-5 слов на русском).\n"
-            "Название должно отражать тему разговора.\n"
-            "Только название, без кавычек, без точек, без лишнего текста.\n"
-            "Примеры: 'Рецепт борща', 'Python функции', 'Анализ Bitcoin', 'Генерация фото'"
-        )},
-        {"role": "user", "content": f"Пользователь: {user_msg[:200]}\nОтвет: {ai_reply[:200]}"},
+        {"role": "system", "content": "Ты генерируешь названия для чатов. Верни ТОЛЬКО название без всего лишнего."},
+        {"role": "user", "content": f"Создай название 3-5 слов для чата:\nПользователь: {user_msg[:150]}\nТема: {ai_reply[:150]}\n\nНазвание:"},
     ]
 
-    title, _ = await call_ai(messages, max_tokens=30, temperature=0.3)
+    title, _ = await call_ai(messages, max_tokens=20, temperature=0.2)
     title = title.strip().strip('"').strip("'").strip(".")
-    if len(title) > 50:
-        title = title[:50]
+    # Убираем мусор если модель верла промпт
+    if len(title) > 50 or "generate" in title.lower() or "system" in title.lower():
+        title = ""
     if len(title) < 3:
         title = user_msg[:40] + "..." if len(user_msg) > 40 else user_msg
-    return title
+    return title[:50]
