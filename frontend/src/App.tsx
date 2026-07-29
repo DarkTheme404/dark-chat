@@ -123,7 +123,7 @@ function ThinkingToggle({ active, onToggle }: { active: boolean; onToggle: () =>
       <div className="thinking-track">
         <div className="thinking-knob" />
       </div>
-      <span className="thinking-label">{active ? 'Deep' : 'Fast'}</span>
+      <span className="thinking-label">{active ? 'Глубокое мышление' : 'Быстрый режим'}</span>
     </div>
   );
 }
