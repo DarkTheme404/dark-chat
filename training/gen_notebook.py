@@ -12,7 +12,7 @@ cells.append({
 
 cells.append({
     'cell_type': 'code',
-    'source': '!pip install -q transformers datasets trl peft accelerate',
+    'source': '!pip install -q transformers datasets trl peft accelerate torchao --upgrade',
     'metadata': {},
     'execution_count': None,
     'outputs': []
