@@ -1,12 +1,20 @@
+"""Генерация кода через OpenRouter (бесплатные модели)"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
 import os
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-HF_TOKEN = os.getenv("HF_TOKEN", "")
-API_URL = "https://api-inference.huggingface.co/models/deepseek-ai/deepseek-coder-6.7b-instruct"
+OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN", "")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+FREE_CODE_MODELS = [
+    "poolside/laguna-m.1:free",
+    "cohere/north-mini-code:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+]
 
 
 class CodeRequest(BaseModel):
@@ -17,13 +25,12 @@ class CodeRequest(BaseModel):
 class CodeResponse(BaseModel):
     code: str
     language: str
-    model: str = "DeepSeek-Coder-6.7B"
+    model: str = "AI"
 
 
 DEMO_CODES = {
     "python": '''# {prompt}
 def solution():
-    """Решение задачи"""
     result = []
     for i in range(10):
         result.append(i * 2)
@@ -40,25 +47,7 @@ function solution() {{
     }}
     return result;
 }}
-
 console.log(solution());
-''',
-    "go": '''// {prompt}
-package main
-
-import "fmt"
-
-func solution() []int {{
-    result := make([]int, 10)
-    for i := range result {{
-        result[i] = i * 2
-    }}
-    return result
-}}
-
-func main() {{
-    fmt.Println(solution())
-}}
 ''',
 }
 
@@ -67,32 +56,37 @@ func main() {{
 async def generate_code(request: CodeRequest):
     """Сгенерировать код по описанию"""
 
-    # Пробуем HF API
-    if HF_TOKEN:
-        try:
-            system_prompt = f"Ты — AI для генерации кода на {request.language}. Генерируй только код."
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.prompt}
-            ]
+    if OPENROUTER_TOKEN:
+        messages = [
+            {"role": "system", "content": f"Ты — AI для генерации кода на {request.language}. Генерируй только код без объяснений."},
+            {"role": "user", "content": request.prompt}
+        ]
 
-            headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-            payload = {
-                "inputs": messages,
-                "parameters": {"max_new_tokens": 2048, "temperature": 0.3}
-            }
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_TOKEN}",
+            "Content-Type": "application/json",
+        }
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(API_URL, json=payload, headers=headers)
-                if response.status_code == 200:
-                    result = response.json()
-                    if isinstance(result, list) and len(result) > 0:
-                        code = result[0].get("generated_text", "")
-                        return CodeResponse(code=code, language=request.language)
-        except Exception:
-            pass
+        for model_id in FREE_CODE_MODELS:
+            try:
+                payload = {
+                    "model": model_id,
+                    "messages": messages,
+                    "max_tokens": 2048,
+                    "temperature": 0.3,
+                }
 
-    # Демо-код
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
+                    if response.status_code == 200:
+                        result = response.json()
+                        code = result["choices"][0]["message"]["content"]
+                        model_name = model_id.split("/")[-1].replace(":free", "")
+                        return CodeResponse(code=code, language=request.language, model=model_name)
+            except Exception as e:
+                logger.error("Code model %s error: %s", model_id, e)
+                continue
+
     template = DEMO_CODES.get(request.language, DEMO_CODES["python"])
     code = template.format(prompt=request.prompt)
     return CodeResponse(code=code, language=request.language, model="demo")

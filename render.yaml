@@ -12,5 +12,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.11"
-      - key: HF_TOKEN
+      - key: OPENROUTER_TOKEN
         sync: false
