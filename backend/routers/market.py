@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/market/{symbol}")
+@router.get("/{symbol}")
 async def get_market_data(symbol: str, range: str = "1mo", interval: str = "1d"):
     """Получить данные графика через Yahoo Finance"""
     try:
