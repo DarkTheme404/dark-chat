@@ -326,12 +326,31 @@ async def chat(request: ChatRequest):
         resp_type = "text"
 
     else:
-        # Обычный чат
+        # Обычный чат — загружаем историю из БД
         messages = [
-            {"role": "system", "content": "Ты — Dark Chat, умный AI-ассистент. Отвечай на русском языке кратко и по делу. Не используй markdown разметку."},
+            {"role": "system", "content": "Ты — Dark Chat, умный AI-ассистент. Отвечай на русском языке кратко и по делу. Не используй markdown разметку. Ты помнишь всю предыдущую беседу в этой сессии."},
         ]
+
+        # Загружаем историю из БД если есть session_id
+        if session_id:
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT user_message, bot_reply FROM queries WHERE session_id = ? ORDER BY created_at ASC LIMIT 20",
+                    (session_id,)
+                )
+                for row in cursor.fetchall():
+                    messages.append({"role": "user", "content": row[0]})
+                    messages.append({"role": "assistant", "content": row[1]})
+                conn.close()
+            except Exception as e:
+                logger.error("Failed to load history: %s", e)
+
+        # Добавляем историю из фронтенда если есть
         for msg in request.history:
             messages.append(msg)
+
         messages.append({"role": "user", "content": request.message})
 
         reply, model_name = await call_ai(messages)
