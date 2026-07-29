@@ -4,8 +4,10 @@ from pydantic import BaseModel
 import httpx
 import os
 import uuid
+import logging
 from models import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
@@ -29,13 +31,11 @@ class ChatResponse(BaseModel):
 async def chat(request: ChatRequest):
     """Отправить сообщение в чат (Mistral 7B)"""
 
-    # Если сессия не указана — создаём новую
     session_id = request.session_id
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
         conn = get_db()
         cursor = conn.cursor()
-        # Берём первые 50 символов сообщения как название
         title = request.message[:50] + "..." if len(request.message) > 50 else request.message
         cursor.execute(
             "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
@@ -47,35 +47,39 @@ async def chat(request: ChatRequest):
     reply = ""
     model = "demo"
 
-    # Пробуем HF API
+    logger.info("HF_TOKEN set: %s", bool(HF_TOKEN))
+
     if HF_TOKEN:
         try:
-            messages = [{"role": "system", "content": "Ты — Dark Chat, умный AI-ассистент. Отвечай на русском языке кратко и по делу."}]
-            for msg in request.history:
-                messages.append(msg)
-            messages.append({"role": "user", "content": request.message})
+            prompt = f"<s>[INST] Ты — Dark Chat, умный AI-ассистент. Отвечай на русском языке кратко и по делу.\n\n{request.message} [/INST]"
 
             headers = {"Authorization": f"Bearer {HF_TOKEN}"}
             payload = {
-                "inputs": messages,
-                "parameters": {"max_new_tokens": 1024, "temperature": 0.7, "top_p": 0.9}
+                "inputs": prompt,
+                "parameters": {"max_new_tokens": 1024, "temperature": 0.7, "top_p": 0.9},
+                "options": {"wait_for_model": True}
             }
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info("Calling HF API: %s", API_URL)
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(API_URL, json=payload, headers=headers)
+                logger.info("HF response status: %s", response.status_code)
+
                 if response.status_code == 200:
                     result = response.json()
                     if isinstance(result, list) and len(result) > 0:
                         reply = result[0].get("generated_text", "")
                         model = "Mistral-7B-Instruct"
-        except Exception:
-            pass
+                        logger.info("Got reply from Mistral, length: %d", len(reply))
+                else:
+                    logger.error("HF API error %s: %s", response.status_code, response.text[:500])
+        except Exception as e:
+            logger.exception("HF API exception: %s", e)
 
-    # Демо-ответ
     if not reply:
         reply = f"[Dark Chat] {request.message}\n\nЭто демо-режим. Подключите HF_TOKEN для работы с Mistral 7B."
 
-    # Сохраняем запрос в БД
     query_id = 0
     try:
         conn = get_db()
@@ -85,13 +89,10 @@ async def chat(request: ChatRequest):
             (session_id, request.message, reply, model)
         )
         query_id = cursor.lastrowid
-
-        # Обновляем время сессии
         cursor.execute(
             "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
             (session_id,)
         )
-
         conn.commit()
         conn.close()
     except Exception:
