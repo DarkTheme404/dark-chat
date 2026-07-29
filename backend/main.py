@@ -14,7 +14,7 @@ init_db()
 app = FastAPI(
     title="Dark Chat",
     description="AI-powered chat with code, image, and video generation. Self-learning system.",
-    version="3.0.0"
+    version="3.1.0"
 )
 
 # CORS для фронтенда
@@ -65,4 +65,4 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "3.0.0"}
+    return {"status": "ok", "version": "3.1.0"}
