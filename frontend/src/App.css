@@ -47,11 +47,11 @@ body {
 
 /* ============ NEURAL NETWORK CANVAS ============ */
 .neural-bg {
-  position: fixed;
+  position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
 /* ============ SCANLINES ============ */
@@ -85,7 +85,7 @@ body {
   backdrop-filter: blur(20px);
   flex-shrink: 0;
   position: relative;
-  z-index: 10;
+  z-index: 20;
 }
 
 .header::after {
@@ -142,6 +142,8 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   backdrop-filter: blur(10px);
+  position: relative;
+  z-index: 25;
 }
 
 .sidebar-header {
@@ -264,7 +266,9 @@ body {
   flex-shrink: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  background: rgba(15, 15, 26, 0.6);
+  background: rgba(15, 15, 26, 0.8);
+  position: relative;
+  z-index: 15;
 }
 
 .tab {
@@ -428,10 +432,12 @@ body {
   gap: 8px;
   padding: 14px 16px;
   border-top: 1px solid var(--border);
-  background: rgba(15, 15, 26, 0.9);
+  background: rgba(15, 15, 26, 0.95);
   backdrop-filter: blur(20px);
   flex-shrink: 0;
   align-items: center;
+  position: relative;
+  z-index: 15;
 }
 
 .input-area input[type="text"] {

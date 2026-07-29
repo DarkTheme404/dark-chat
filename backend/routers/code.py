@@ -76,7 +76,7 @@ async def generate_code(request: CodeRequest):
         ]
 
         # Параллельно 2 модели
-        tasks = [_call_one(m, messages, 1024, 0.3) for m in FREE_CODE_MODELS[:2]]
+        tasks = [asyncio.ensure_future(_call_one(m, messages, 1024, 0.3)) for m in FREE_CODE_MODELS[:2]]
         done, _ = await asyncio.wait(tasks, timeout=20.0, return_when=asyncio.FIRST_COMPLETED)
         for t in done:
             result = t.result()

@@ -146,7 +146,7 @@ async def call_ai(messages: list, model_list: list = None, max_tokens: int = 512
 
     # Пробуем первые 2 модели параллельно
     batch = models[:2]
-    tasks = [_call_one_model(m, messages, max_tokens, temperature, timeout) for m in batch]
+    tasks = [asyncio.ensure_future(_call_one_model(m, messages, max_tokens, temperature, timeout)) for m in batch]
     done, _ = await asyncio.wait(tasks, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
 
     for task in done:
