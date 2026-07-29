@@ -1,6 +1,7 @@
 """Модели данных для системы обучения Dark Chat"""
 import sqlite3
 import os
+import uuid
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
@@ -20,14 +21,27 @@ def init_db():
     conn = get_db()
     cursor = conn.cursor()
 
-    # Таблица запросов пользователей
+    # Таблица сессий чата
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT UNIQUE NOT NULL,
+            title TEXT DEFAULT 'Новый чат',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Таблица запросов (с привязкой к сессии)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS queries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
             user_message TEXT NOT NULL,
             bot_reply TEXT NOT NULL,
             model_used TEXT DEFAULT 'demo',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (session_id) REFERENCES sessions(session_id)
         )
     """)
 
@@ -75,15 +89,32 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO training_metrics DEFAULT VALUES")
 
+    # Создаём дефолтную сессию если нет ни одной
+    cursor.execute("SELECT COUNT(*) FROM sessions")
+    if cursor.fetchone()[0] == 0:
+        default_id = str(uuid.uuid4())[:8]
+        cursor.execute(
+            "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
+            (default_id, "Первый чат")
+        )
+
     conn.commit()
     conn.close()
 
 
 # Модели Pydantic
-class QueryCreate(BaseModel):
-    user_message: str
-    bot_reply: str
-    model_used: str = "demo"
+class SessionCreate(BaseModel):
+    title: Optional[str] = "Новый чат"
+
+
+class SessionUpdate(BaseModel):
+    title: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    history: list[dict] = []
 
 
 class FeedbackCreate(BaseModel):
@@ -98,11 +129,3 @@ class TrainingPairCreate(BaseModel):
     output_text: str
     source: str = "feedback"
     quality_score: float = 1.0
-
-
-class TrainingMetrics(BaseModel):
-    total_queries: int
-    total_feedback: int
-    avg_rating: float
-    training_sessions: int
-    last_training: Optional[str]

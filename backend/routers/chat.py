@@ -1,8 +1,9 @@
-"""Чат роутер с сохранением запросов для обучения"""
+"""Чат роутер с поддержкой сессий и сохранением для обучения"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
 import os
+import uuid
 from models import get_db
 
 router = APIRouter()
@@ -13,18 +14,35 @@ API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Inst
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str = ""
     history: list[dict] = []
 
 
 class ChatResponse(BaseModel):
     reply: str
     model: str = "Mistral-7B-Instruct"
-    query_id: int = 0  # ID запроса для оценки
+    query_id: int = 0
+    session_id: str = ""
 
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Отправить сообщение в чат (Mistral 7B)"""
+
+    # Если сессия не указана — создаём новую
+    session_id = request.session_id
+    if not session_id:
+        session_id = str(uuid.uuid4())[:8]
+        conn = get_db()
+        cursor = conn.cursor()
+        # Берём первые 50 символов сообщения как название
+        title = request.message[:50] + "..." if len(request.message) > 50 else request.message
+        cursor.execute(
+            "INSERT INTO sessions (session_id, title) VALUES (?, ?)",
+            (session_id, title)
+        )
+        conn.commit()
+        conn.close()
 
     reply = ""
     model = "demo"
@@ -57,19 +75,26 @@ async def chat(request: ChatRequest):
     if not reply:
         reply = f"[Dark Chat] {request.message}\n\nЭто демо-режим. Подключите HF_TOKEN для работы с Mistral 7B."
 
-    # Сохраняем запрос в БД для обучения
+    # Сохраняем запрос в БД
     query_id = 0
     try:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO queries (user_message, bot_reply, model_used) VALUES (?, ?, ?)",
-            (request.message, reply, model)
+            "INSERT INTO queries (session_id, user_message, bot_reply, model_used) VALUES (?, ?, ?, ?)",
+            (session_id, request.message, reply, model)
         )
         query_id = cursor.lastrowid
+
+        # Обновляем время сессии
+        cursor.execute(
+            "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+            (session_id,)
+        )
+
         conn.commit()
         conn.close()
     except Exception:
         pass
 
-    return ChatResponse(reply=reply, model=model, query_id=query_id)
+    return ChatResponse(reply=reply, model=model, query_id=query_id, session_id=session_id)
