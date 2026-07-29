@@ -20,6 +20,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -68,6 +69,12 @@ function App() {
   const handleNewSession = () => {
     setActiveSession(null);
     setMessages([]);
+    setSidebarOpen(false);
+  };
+
+  const handleSelectSession = (id: string | null) => {
+    setActiveSession(id);
+    setSidebarOpen(false);
   };
 
   const handleSend = async () => {
@@ -143,18 +150,27 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Dark Chat</h1>
-        <p>AI-powered ассистент с самообучением</p>
+        {activeTab === 'chat' && (
+          <button className="menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
+        )}
+        <div className="header-text">
+          <h1>Dark Chat</h1>
+          <p>AI-powered ассистент с самообучением</p>
+        </div>
       </header>
 
       <div className="main-layout">
         {activeTab === 'chat' && (
-          <Sidebar
-            activeSession={activeSession}
-            onSelectSession={setActiveSession}
-            onNewSession={handleNewSession}
-            refreshTrigger={refreshTrigger}
-          />
+          <>
+            <Sidebar
+              activeSession={activeSession}
+              onSelectSession={handleSelectSession}
+              onNewSession={handleNewSession}
+              refreshTrigger={refreshTrigger}
+              className={sidebarOpen ? 'open' : ''}
+            />
+            {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+          </>
         )}
 
         <div className="content-area">

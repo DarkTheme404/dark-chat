@@ -8,12 +8,11 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #0f0f23;
   color: #e0e0e0;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {
-  max-width: 1200px;
-  margin: 0 auto;
-  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -29,6 +28,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* Сайдбар */
@@ -38,6 +38,7 @@ body {
   border-right: 1px solid #2a2a4a;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .sidebar-header {
@@ -71,6 +72,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .loading-sessions, .no-sessions {
@@ -138,38 +140,45 @@ body {
 
 .header {
   text-align: center;
-  padding: 20px;
+  padding: 16px;
   border-bottom: 1px solid #2a2a4a;
+  flex-shrink: 0;
 }
 
 .header h1 {
-  font-size: 32px;
+  font-size: 24px;
   color: #fff;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .header p {
   color: #888;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .tabs {
   display: flex;
-  gap: 8px;
-  padding: 16px 20px;
+  gap: 6px;
+  padding: 12px 16px;
   border-bottom: 1px solid #2a2a4a;
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab {
   flex: 1;
-  padding: 12px;
+  min-width: 0;
+  padding: 10px 8px;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
   border-radius: 8px;
   color: #aaa;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .tab:hover {
@@ -193,39 +202,47 @@ body {
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 40px 16px;
   color: #555;
 }
 
 .empty-state h2 {
   color: #7c7cff;
   margin-bottom: 8px;
+  font-size: 20px;
 }
 
 .message {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .user-message {
   background: #7c7cff;
   color: #fff;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: 16px 16px 0 16px;
-  max-width: 70%;
+  max-width: 85%;
   margin-left: auto;
+  font-size: 14px;
+  line-height: 1.5;
+  word-wrap: break-word;
 }
 
 .assistant-message {
   background: #1a1a2e;
-  padding: 16px;
+  padding: 14px;
   border-radius: 16px 16px 16px 0;
-  max-width: 80%;
+  max-width: 90%;
   border: 1px solid #2a2a4a;
+  font-size: 14px;
+  line-height: 1.5;
+  word-wrap: break-word;
 }
 
 .loading {
@@ -251,20 +268,21 @@ body {
 
 .input-area {
   display: flex;
-  gap: 12px;
-  padding: 16px 20px;
+  gap: 8px;
+  padding: 12px 16px;
   border-top: 1px solid #2a2a4a;
   background: #1a1a2e;
+  flex-shrink: 0;
 }
 
 .input-area input {
   flex: 1;
-  padding: 12px 16px;
+  padding: 12px 14px;
   background: #0f0f23;
   border: 1px solid #2a2a4a;
   border-radius: 8px;
   color: #fff;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .input-area input:focus {
@@ -273,13 +291,14 @@ body {
 }
 
 .input-area button {
-  padding: 12px 24px;
+  padding: 12px 20px;
   background: #7c7cff;
   border: none;
   border-radius: 8px;
   color: #fff;
   font-size: 16px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .input-area button:hover {
@@ -323,8 +342,9 @@ body {
 }
 
 .code-block pre {
-  padding: 16px;
+  padding: 12px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .code-block code {
@@ -481,29 +501,32 @@ body {
 /* Админ-панель */
 .admin-panel {
   flex: 1;
-  padding: 20px;
+  padding: 16px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-panel h2 {
   color: #fff;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .admin-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-x: auto;
 }
 
 .admin-tabs button {
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: #1a1a2e;
   border: 1px solid #2a2a4a;
   border-radius: 8px;
   color: #aaa;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .admin-tabs button.active {
@@ -514,32 +537,32 @@ body {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
 .stat-card {
   background: #1a1a2e;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid #2a2a4a;
   text-align: center;
 }
 
 .stat-card.wide {
-  grid-column: span 4;
+  grid-column: span 2;
   text-align: left;
 }
 
 .stat-number {
-  font-size: 32px;
+  font-size: 28px;
   color: #7c7cff;
   font-weight: 700;
 }
 
 .stat-label {
   color: #888;
-  font-size: 14px;
+  font-size: 13px;
   margin-top: 4px;
 }
 
@@ -572,16 +595,17 @@ body {
 .feedback-item {
   background: #1a1a2e;
   border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
   border: 1px solid #2a2a4a;
 }
 
 .feedback-header {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .feedback-rating {
@@ -610,6 +634,7 @@ body {
   border-radius: 8px;
   margin-bottom: 8px;
   font-size: 13px;
+  word-wrap: break-word;
 }
 
 .msg.user {
@@ -638,6 +663,7 @@ body {
   display: flex;
   gap: 12px;
   margin-bottom: 30px;
+  flex-wrap: wrap;
 }
 
 .btn-export, .btn-apply {
@@ -661,7 +687,7 @@ body {
 .training-info {
   background: #1a1a2e;
   border-radius: 12px;
-  padding: 20px;
+  padding: 16px;
   border: 1px solid #2a2a4a;
 }
 
@@ -684,4 +710,165 @@ body {
   color: #7c7cff;
   font-size: 13px;
   margin-top: 16px;
+}
+
+/* === МОБИЛЬНЫЕ === */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 280px;
+    height: 100%;
+    z-index: 100;
+    transition: left 0.3s ease;
+  }
+
+  .sidebar.open {
+    left: 0;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 99;
+  }
+
+  .sidebar.open + .sidebar-overlay {
+    display: block;
+  }
+
+  .header h1 {
+    font-size: 20px;
+  }
+
+  .header {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .menu-btn {
+    display: flex;
+    background: none;
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .header-text {
+    flex: 1;
+    text-align: left;
+  }
+
+  .header-text h1 {
+    font-size: 18px;
+    margin-bottom: 0;
+  }
+
+  .header-text p {
+    font-size: 12px;
+  }
+
+  .tabs {
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  .tab {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .messages {
+    padding: 12px;
+  }
+
+  .user-message {
+    max-width: 90%;
+    font-size: 14px;
+  }
+
+  .assistant-message {
+    max-width: 95%;
+    font-size: 14px;
+  }
+
+  .input-area {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .input-area input {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  .input-area button {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-number {
+    font-size: 24px;
+  }
+
+  .training-actions {
+    flex-direction: column;
+  }
+
+  .btn-export, .btn-apply {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .header h1 {
+    font-size: 16px;
+  }
+
+  .tab {
+    font-size: 11px;
+    padding: 6px 4px;
+  }
+
+  .user-message, .assistant-message {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .input-area input {
+    font-size: 16px;
+  }
+}
+
+/* Safe area для iPhone */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .app {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .input-area {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
 }

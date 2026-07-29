@@ -14,9 +14,10 @@ interface SidebarProps {
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   refreshTrigger: number;
+  className?: string;
 }
 
-export function Sidebar({ activeSession, onSelectSession, onNewSession, refreshTrigger }: SidebarProps) {
+export function Sidebar({ activeSession, onSelectSession, onNewSession, refreshTrigger, className }: SidebarProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +63,7 @@ export function Sidebar({ activeSession, onSelectSession, onNewSession, refreshT
   };
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar ${className || ''}`}>
       <div className="sidebar-header">
         <h3>Чаты</h3>
         <button className="new-chat-btn" onClick={onNewSession}>
