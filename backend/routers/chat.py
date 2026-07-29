@@ -1,18 +1,20 @@
-"""Чат роутер с поддержкой сессий и OpenRouter"""
+"""Чат роутер с автообучением через OpenRouter"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
 import os
 import uuid
+import time
 import logging
-from models import get_db
+from models import get_db, auto_collect_response, get_best_model
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 OPENROUTER_TOKEN = os.getenv("OPENROUTER_TOKEN", "")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Бесплатные модели (ранжированы по качеству)
+
+# Бесплатные модели, ранжированные по качеству
 FREE_MODELS = [
     "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
@@ -36,7 +38,7 @@ class ChatResponse(BaseModel):
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Отправить сообщение в чат (OpenRouter free models)"""
+    """Отправить сообщение в чат с автообучением"""
 
     session_id = request.session_id
     if not session_id:
@@ -53,8 +55,7 @@ async def chat(request: ChatRequest):
 
     reply = ""
     model_name = "demo"
-
-    logger.info("OPENROUTER_TOKEN set: %s", bool(OPENROUTER_TOKEN))
+    start_time = time.time()
 
     if OPENROUTER_TOKEN:
         messages = [
@@ -78,43 +79,30 @@ async def chat(request: ChatRequest):
                     "temperature": 0.7,
                 }
 
-                logger.info("Trying model: %s", model_id)
-
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
-                    logger.info("Response %s: %s", model_id, response.status_code)
 
                     if response.status_code == 200:
                         result = response.json()
                         reply = result["choices"][0]["message"]["content"]
                         model_name = model_id.split("/")[-1].replace(":free", "")
-                        logger.info("Got reply from %s, length: %d", model_id, len(reply))
                         break
-                    else:
-                        logger.error("Model %s error: %s", model_id, response.text[:200])
             except Exception as e:
-                logger.error("Model %s exception: %s", model_id, e)
+                logger.error("Model %s error: %s", model_id, e)
                 continue
 
     if not reply:
         reply = f"[Dark Chat] {request.message}\n\nЭто демо-режим. Задай OPENROUTER_TOKEN для работы с AI."
 
-    query_id = 0
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO queries (session_id, user_message, bot_reply, model_used) VALUES (?, ?, ?, ?)",
-            (session_id, request.message, reply, model_name)
-        )
-        query_id = cursor.lastrowid
-        cursor.execute(
-            "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-            (session_id,)
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
+    response_time_ms = int((time.time() - start_time) * 1000)
+
+    # Автосбор данных для обучения
+    query_id = auto_collect_response(
+        user_message=request.message,
+        bot_reply=reply,
+        model_used=model_name,
+        response_time_ms=response_time_ms,
+        session_id=session_id,
+    )
 
     return ChatResponse(reply=reply, model=model_name, query_id=query_id, session_id=session_id)
