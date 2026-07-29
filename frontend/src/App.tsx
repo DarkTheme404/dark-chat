@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, CodeBlock, ImageBlock, VideoBlock } from './components';
+import { ChatMessage, CodeBlock, ImageBlock, VideoBlock, FeedbackButton, AdminPanel } from './components';
 import { api } from './services/api';
 import './App.css';
 
-type Tab = 'chat' | 'code' | 'image' | 'video';
+type Tab = 'chat' | 'code' | 'image' | 'video' | 'admin';
 
 interface Message {
   id: number;
   type: 'user' | 'assistant';
   content: string;
   tab: Tab;
+  queryId?: number;
 }
 
 function App() {
@@ -43,11 +44,13 @@ function App() {
 
     try {
       let response = '';
+      let queryId = 0;
 
       switch (activeTab) {
         case 'chat':
           const chatRes = await api.chat(input);
           response = chatRes.reply;
+          queryId = chatRes.query_id;
           break;
         case 'code':
           const codeRes = await api.generateCode(input, 'python');
@@ -68,6 +71,7 @@ function App() {
         type: 'assistant',
         content: response,
         tab: activeTab,
+        queryId,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -83,13 +87,14 @@ function App() {
     { id: 'code', label: 'Код', icon: '💻' },
     { id: 'image', label: 'Изображения', icon: '🖼️' },
     { id: 'video', label: 'Видео', icon: '🎬' },
+    { id: 'admin', label: 'Админка', icon: '⚙️' },
   ];
 
   return (
     <div className="app">
       <header className="header">
         <h1>Dark Chat</h1>
-        <p>AI-powered助手 для кода, изображений и видео</p>
+        <p>AI-powered ассистент с самообучением</p>
       </header>
 
       <nav className="tabs">
@@ -104,64 +109,75 @@ function App() {
         ))}
       </nav>
 
-      <main className="chat-area">
-        <div className="messages">
-          {messages.length === 0 && (
-            <div className="empty-state">
-              <h2>Добро пожаловать в Dark Chat!</h2>
-              <p>Выберите вкладку и начните работу</p>
-            </div>
-          )}
+      {activeTab === 'admin' ? (
+        <AdminPanel />
+      ) : (
+        <main className="chat-area">
+          <div className="messages">
+            {messages.length === 0 && (
+              <div className="empty-state">
+                <h2>Добро пожаловать в Dark Chat!</h2>
+                <p>Выберите вкладку и начните работу</p>
+                <p className="hint">💡 Отвечайте на отзывы — это помогает обучать модель</p>
+              </div>
+            )}
 
-          {messages.map(msg => (
-            <div key={msg.id} className={`message ${msg.type}`}>
-              {msg.type === 'user' ? (
-                <div className="user-message">{msg.content}</div>
-              ) : (
-                <div className="assistant-message">
-                  {msg.tab === 'image' && msg.content.startsWith('data:') ? (
-                    <ImageBlock src={msg.content} />
-                  ) : msg.tab === 'code' ? (
-                    <CodeBlock code={msg.content} />
-                  ) : msg.tab === 'video' && msg.content.startsWith('data:') ? (
-                    <VideoBlock src={msg.content} />
-                  ) : (
-                    <ChatMessage content={msg.content} />
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+            {messages.map(msg => (
+              <div key={msg.id} className={`message ${msg.type}`}>
+                {msg.type === 'user' ? (
+                  <div className="user-message">{msg.content}</div>
+                ) : (
+                  <div className="assistant-message">
+                    {msg.tab === 'image' && msg.content.startsWith('data:') ? (
+                      <ImageBlock src={msg.content} />
+                    ) : msg.tab === 'code' ? (
+                      <CodeBlock code={msg.content} />
+                    ) : msg.tab === 'video' && msg.content.startsWith('data:') ? (
+                      <VideoBlock src={msg.content} />
+                    ) : (
+                      <ChatMessage content={msg.content} />
+                    )}
 
-          {loading && (
-            <div className="loading">
-              <div className="spinner"></div>
-              <span>Генерация...</span>
-            </div>
-          )}
+                    {msg.queryId && msg.queryId > 0 && (
+                      <div className="feedback-area">
+                        <FeedbackButton queryId={msg.queryId} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
 
-          <div ref={messagesEndRef} />
-        </div>
+            {loading && (
+              <div className="loading">
+                <div className="spinner"></div>
+                <span>Генерация...</span>
+              </div>
+            )}
 
-        <div className="input-area">
-          <input
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleSend()}
-            placeholder={
-              activeTab === 'chat' ? 'Напишите сообщение...' :
-              activeTab === 'code' ? 'Опишите какой код нужен...' :
-              activeTab === 'image' ? 'Опишите изображение...' :
-              'Опишите видео...'
-            }
-            disabled={loading}
-          />
-          <button onClick={handleSend} disabled={loading || !input.trim()}>
-            {loading ? '...' : '→'}
-          </button>
-        </div>
-      </main>
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="input-area">
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyPress={e => e.key === 'Enter' && handleSend()}
+              placeholder={
+                activeTab === 'chat' ? 'Напишите сообщение...' :
+                activeTab === 'code' ? 'Опишите какой код нужен...' :
+                activeTab === 'image' ? 'Опишите изображение...' :
+                'Опишите видео...'
+              }
+              disabled={loading}
+            />
+            <button onClick={handleSend} disabled={loading || !input.trim()}>
+              {loading ? '...' : '→'}
+            </button>
+          </div>
+        </main>
+      )}
     </div>
   );
 }

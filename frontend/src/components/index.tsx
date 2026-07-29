@@ -42,3 +42,6 @@ export function VideoBlock({ src }: { src: string }) {
     </div>
   );
 }
+
+export { FeedbackForm, FeedbackButton } from './FeedbackForm';
+export { AdminPanel } from './AdminPanel';

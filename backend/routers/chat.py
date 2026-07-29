@@ -1,21 +1,14 @@
+"""Чат роутер с сохранением запросов для обучения"""
 from fastapi import APIRouter
 from pydantic import BaseModel
 import httpx
 import os
-import random
+from models import get_db
 
 router = APIRouter()
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
-
-# Заглушки для демо без API
-DEMO_REPLIES = [
-    "Я — Dark Chat, ваш AI-ассистент. Чем могу помочь?",
-    "Интересный вопрос! Позвольте подумать... Вот мой ответ.",
-    "Отличная тема! Вот что я думаю по этому поводу.",
-    "Спасибо за вопрос. Вот краткий ответ на ваш запрос.",
-]
 
 
 class ChatRequest(BaseModel):
@@ -26,11 +19,15 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     model: str = "Mistral-7B-Instruct"
+    query_id: int = 0  # ID запроса для оценки
 
 
 @router.post("/", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Отправить сообщение в чат (Mistral 7B)"""
+
+    reply = ""
+    model = "demo"
 
     # Пробуем HF API
     if HF_TOKEN:
@@ -51,10 +48,28 @@ async def chat(request: ChatRequest):
                 if response.status_code == 200:
                     result = response.json()
                     if isinstance(result, list) and len(result) > 0:
-                        return ChatResponse(reply=result[0].get("generated_text", ""))
+                        reply = result[0].get("generated_text", "")
+                        model = "Mistral-7B-Instruct"
         except Exception:
-            pass  # fallback на демо-ответ
+            pass
 
-    # Демо-ответ когда API недоступен
-    reply = f"[Dark Chat Demo] {request.message}\n\nЭто демо-режим. Подключите HF_TOKEN для работы с реальной моделью Mistral 7B."
-    return ChatResponse(reply=reply, model="demo")
+    # Демо-ответ
+    if not reply:
+        reply = f"[Dark Chat] {request.message}\n\nЭто демо-режим. Подключите HF_TOKEN для работы с Mistral 7B."
+
+    # Сохраняем запрос в БД для обучения
+    query_id = 0
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO queries (user_message, bot_reply, model_used) VALUES (?, ?, ?)",
+            (request.message, reply, model)
+        )
+        query_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    return ChatResponse(reply=reply, model=model, query_id=query_id)
